@@ -1,0 +1,267 @@
+#pragma version >=0.4.0;
+#include "imports/stdlib.fc";
+#include "imports/constants.fc";
+#include "imports/utils.fc";
+
+
+;; Default SBT
+const  int   storage::index = 0;
+const  int   storage::revoked_at = 0;
+
+global int   storage::init?;
+global slice storage::owner_address;
+global cell  storage::content;
+
+;; Custom
+global slice storage::jetton_wallet_address; ;; jetton wallet address
+global int   storage::locked_jettons;        ;; total locked tokens
+global int   storage::claimed_times;         ;; number of unlocks withdrawed
+global int   storage::first_unlock_time;     ;; timestamp of the first unlock
+global int   storage::first_unlock_size;     ;; size of the first unlock (in percents)
+global int   storage::cycle_length;          ;; time between unlocks in seconds
+global int   storage::cycles_number;         ;; number of unlocks excluding initial
+
+
+() load_data() impure inline {
+    slice ds = get_data().begin_parse();
+
+    storage::init?                 = ds~load_int(1);
+    storage::owner_address         = ds~load_msg_addr();
+    storage::content               = ds~load_ref();
+
+    storage::jetton_wallet_address = ds~load_msg_addr();
+    storage::locked_jettons        = ds~load_coins();
+    storage::claimed_times         = ds~load_uint(16);
+    
+    storage::first_unlock_time     = ds~load_uint(32);
+    storage::first_unlock_size     = ds~load_uint(32);
+    storage::cycle_length          = ds~load_uint(32);
+    storage::cycles_number         = ds~load_uint(16);
+}
+
+
+() save_data() impure {
+    set_data(
+            begin_cell()
+                .store_int(storage::init?, 1)
+                .store_slice(storage::owner_address)
+                .store_ref(storage::content)
+                .store_slice(storage::jetton_wallet_address)
+                .store_coins(storage::locked_jettons)
+                .store_uint(storage::claimed_times, 16)
+                .store_uint(storage::first_unlock_time, 32)
+                .store_uint(storage::first_unlock_size, 32)
+                .store_uint(storage::cycle_length, 32)
+                .store_uint(storage::cycles_number, 16)
+            .end_cell()
+    );
+}
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    slice sender_address = cs~load_msg_addr();
+
+    load_data();
+
+    ifnot (storage::init?) {
+        builder message = begin_cell()
+                            .store_uint(0x18, 6)
+                            .store_slice(storage::jetton_wallet_address)
+                            .store_coins(gas::provide_addr)
+                            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                            .store_uint(op::provide_wallet_address, 32)
+                            .store_uint(now(), 64)
+                            .store_slice(my_address())
+                            .store_uint(0, 1);
+                        
+        send_raw_message(message.end_cell(), mode::pay_fees_separately);
+
+        save_data();
+        return ();
+    }
+
+    ;; Default SBT start
+
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    
+    int op = in_msg_body~load_uint(32);
+
+    if (flags & 1) { ;; route all prove_ownership bounced messages to owner
+        ;; first op was 0xffffffff, because of bounced, now we need to read real one
+        op = in_msg_body~load_uint(32);
+        if (op == op::ownership_proof) {
+            int query_id = in_msg_body~load_uint(64);
+            send_msg(storage::owner_address, 0, op::ownership_proof_bounced, query_id, null(), 64);
+        }
+        return ();
+    }
+
+    int query_id = in_msg_body~load_uint(64);
+
+    if (op == op::request_owner) {
+        slice dest = in_msg_body~load_msg_addr();
+        cell body = in_msg_body~load_ref();
+        int with_content = in_msg_body~load_uint(1);
+
+        var msg = begin_cell()
+                    .store_uint(storage::index, 256)
+                    .store_slice(sender_address)
+                    .store_slice(storage::owner_address)
+                    .store_ref(body)
+                    .store_uint(storage::revoked_at, 64)
+                    .store_uint(with_content, 1);
+
+        if (with_content != 0) {
+            msg = msg.store_ref(storage::content);
+        }
+
+        send_msg(dest, 0, op::owner_info, query_id, msg, 64);
+        return ();
+    }
+
+    if (op == op::prove_ownership) {
+        throw_unless(401, equal_slices(storage::owner_address, sender_address));
+
+        slice dest = in_msg_body~load_msg_addr();
+        cell body = in_msg_body~load_ref();
+        int with_content = in_msg_body~load_uint(1);
+
+        var msg = begin_cell()
+                .store_uint(storage::index, 256)
+                .store_slice(storage::owner_address)
+                .store_ref(body)
+                .store_uint(storage::revoked_at, 64)
+                .store_uint(with_content, 1);
+
+        if (with_content != 0) {
+            msg = msg.store_ref(storage::content);
+        }
+
+        send_msg(dest, 0, op::ownership_proof, query_id, msg, 64);
+        return ();
+    }
+
+    if (op == op::get_static_data) {
+        var msg = begin_cell().store_uint(storage::index, 256).store_slice(null_addr());
+
+        send_msg(sender_address, 0, op::report_static_data, query_id, msg, 64);
+        return ();
+    }
+
+    if (op == op::take_excess) {
+        throw_unless(401, equal_slices(storage::owner_address, sender_address));
+
+        ;; reserve amount for storage
+        raw_reserve(min_tons_for_storage, 0);
+
+        send_msg(sender_address, 0, op::excesses, query_id, null(), 128);
+        return ();
+    }
+
+    if (op == op::transfer) {
+        throw(413);
+    }
+    ;; default SBT end
+
+    if (op == op::transfer_notification) {
+        int   jetton_amount = in_msg_body~load_coins();
+        slice from_address  = in_msg_body~load_msg_addr();
+        try {
+            throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::jetton_wallet_address));
+            throw_unless(exc::already_unlocked, now() < storage::first_unlock_time);
+            storage::locked_jettons += jetton_amount;
+
+            save_data();
+            return ();
+        }
+        catch (_, _) {
+            send_jettons(query_id, jetton_amount, from_address, from_address, sender_address, 0, mode::carry_remaining_gas,
+                         1, begin_cell().store_uint(0, 32).store_slice("Can't lock jettons").end_cell());  
+            return ();
+        }
+    }
+    if (op == op::claim) {
+        throw_unless(exc::incorrect_sender, equal_slices(storage::owner_address, sender_address));
+        throw_unless(exc::not_unlocked_yet, now() > storage::first_unlock_time);
+
+        int total_unlocks = 1 + min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
+        int available_percent = muldiv((total_unlocks - storage::claimed_times), percent_devider, storage::cycles_number);
+        if (storage::claimed_times == 0) {
+            available_percent += storage::first_unlock_size;
+        }
+        throw_unless(exc::nothing_to_claim, available_percent);
+
+        int available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider);
+        send_jettons(query_id, available_jettons, storage::owner_address, storage::owner_address, storage::jetton_wallet_address, 0, mode::carry_remaining_gas,
+                     1, begin_cell().store_uint(0, 32).store_slice("Jettons unlock #").store_builder(int_to_str(total_unlocks + 1)).end_cell());  
+
+        storage::claimed_times = total_unlocks; 
+        save_data();
+        return ();
+    }
+
+    if (op == op::destroy) {
+        throw_unless(exc::incorrect_sender, equal_slices(storage::owner_address, sender_address));
+        throw_unless(exc::not_unlocked_yet, (storage::claimed_times == storage::cycles_number + 1));  ;; can burn SBT only after all claims
+
+        send_msg(sender_address, 0, op::excesses, query_id, null(), 128);
+        storage::owner_address = null_addr();
+
+        save_data();
+        return ();
+    }
+
+    ;; set jetton wallet address (used only once)
+    if (op == op::take_wallet_address) {
+        throw_if(exc::already_inited, storage::init?);  
+        throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::jetton_wallet_address));
+        
+        storage::init? = true;
+        storage::jetton_wallet_address = in_msg_body~load_msg_addr();
+
+        save_data();
+        return ();
+    }
+
+    throw(0xffff);
+}
+
+
+;;
+;;  GET Methods
+;;
+
+(int, int, slice, slice, cell) get_nft_data() method_id {
+    load_data();
+    return (storage::init?, storage::index, null_addr(), storage::owner_address, storage::content);
+}
+
+slice get_authority_address() method_id {
+    return null_addr();
+}
+
+int get_revoked_time() method_id {
+    return 0;
+}
+
+
+(int, slice, cell, slice, int, int, int, int, int, int) get_storage_data() method_id {
+    load_data();
+
+    return (
+        storage::init?,
+        storage::owner_address,
+        storage::content,
+        storage::jetton_wallet_address,
+        storage::locked_jettons,
+        storage::claimed_times,
+        storage::first_unlock_time,
+        storage::first_unlock_size,
+        storage::cycle_length,
+        storage::cycles_number
+    );      
+}
