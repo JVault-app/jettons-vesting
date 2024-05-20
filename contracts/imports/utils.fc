@@ -2,41 +2,76 @@ slice null_addr() asm "b{00} PUSHSLICE";
 
 cell  preload_ref_index(slice s, int n) asm "PLDREFVAR";
 
-() send_msg(slice to_address, int amount, int op, int query_id, builder payload, int send_mode) impure inline {
-    var body = begin_cell().store_uint(op, 32);
-    if (op) {
-        body = body.store_uint(query_id, 64);
-    }
-    ifnot (null?(payload)) {
-        body = body.store_builder(payload);
-    }
+() send_excess(slice to_address, int query_id, int value, int sending_mode) impure inline {
+    cell msg = begin_cell()
+                    .store_uint(0x18, 6)
+                    .store_slice(to_address)
+                    .store_coins(value)
+                    .store_uint(op::excesses, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 32)
+                    .store_uint(query_id, 64)
+                    .end_cell();
+    send_raw_message(msg, sending_mode);
+}
 
-    var msg = begin_cell()
-                .store_uint(0x10, 6)
-                .store_slice(to_address)
-                .store_coins(amount)
-                .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-                .store_ref(body.end_cell());
-
-    send_raw_message(msg.end_cell(), send_mode);
+() send_builder_message(slice to_address, int value, builder payload, int sending_mode) impure inline {
+    cell msg = begin_cell()
+                    .store_uint(0x18, 6)
+                    .store_slice(to_address)
+                    .store_coins(value)
+                    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                    .store_builder(payload)
+                .end_cell();
+    send_raw_message(msg, sending_mode);
 }
 
 
-cell calculate_nft_item_state_init(int item_index, cell nft_item_code, slice collection_address) inline {
-    cell data = begin_cell().store_uint(item_index, 64).store_slice(collection_address).end_cell();
-    return begin_cell().store_uint(0, 2).store_dict(nft_item_code).store_dict(data).store_uint(0, 1).end_cell();
+() send_cell_message(slice to_address, int value, cell payload, int sending_mode) impure inline {
+    cell msg = begin_cell()
+                    .store_uint(0x18, 6)
+                    .store_slice(to_address)
+                    .store_coins(value)
+                    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
+                    .store_maybe_ref(payload)
+                .end_cell();
+    send_raw_message(msg, sending_mode);
+}
+
+
+() send_deploy_message(slice to_address, int value, cell state_init, cell payload, int sending_mode) impure inline {
+    cell msg = begin_cell()
+                    .store_uint(0x10, 6)
+                    .store_slice(to_address)
+                    .store_coins(value)
+                    .store_uint(3, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+                    .store_ref(state_init)
+                    .store_maybe_ref(payload)
+                .end_cell();
+    send_raw_message(msg, sending_mode);
+}
+
+
+() send_message_with_comment(slice to_address, int value, slice comment, int sending_mode) impure inline {
+    builder body = begin_cell()
+                    .store_uint(0, 32)
+                    .store_slice(comment);
+    return send_builder_message(to_address, value, body, sending_mode);
+}
+
+
+cell calculate_nft_item_state_init(int item_index, cell nft_item_code, slice collection_address, int index_size) inline {
+    cell data = begin_cell().store_uint(item_index, index_size).store_slice(collection_address).end_cell();
+    return begin_cell().store_uint(0, 2).store_maybe_ref(nft_item_code).store_maybe_ref(data).store_uint(0, 1).end_cell();
 }
 
 
 cell calculate_ref_wallet_state_init(slice owner_address, cell ref_wallet_code, int sale_end_time) inline {
-    cell data = begin_cell().store_slice(owner_address).store_slice(my_address()).store_uint(0, 1).store_uint(sale_end_time, 32).end_cell();
+    cell data = begin_cell().store_slice(owner_address).store_slice(my_address()).store_uint(sale_end_time, 32).store_uint(0, 1).end_cell();
     return begin_cell().store_uint(0, 2).store_dict(ref_wallet_code).store_dict(data).store_uint(0, 1).end_cell();
 }
 
 
 slice get_address_by_state_init(cell state_init) inline { 
-    return begin_cell().store_uint(4, 3)
-                        .store_int(0, 8)
+    return begin_cell().store_uint(1024, 11)
                         .store_uint(cell_hash(state_init), 256)
                         .end_cell()
                         .begin_parse();
@@ -68,49 +103,53 @@ slice get_address_by_state_init(cell state_init) inline {
         msg_body = msg_body.store_uint(0, 1);
     }
 
-    builder msg = begin_cell()
-                .store_uint(0x10, 6) 
-                .store_slice(jetton_wallet_address)
-                .store_coins(msg_value)
-                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
-                .store_uint(1, 1)
-                .store_ref(msg_body.end_cell());
-            
-    send_raw_message(msg.end_cell(), sending_mode);  
+    return send_cell_message(jetton_wallet_address, msg_value, msg_body.end_cell(), sending_mode);
 }
 
 
 () burn_jettons(int query_id, int jetton_amount, slice jetton_wallet_address,
                 slice response_address, int msg_value, int sending_mode) impure inline {
-    builder msg_body = begin_cell()
+    cell msg_body = begin_cell()
                         .store_uint(op::burn_jetton, 32)
                         .store_uint(query_id, 64)
                         .store_coins(jetton_amount)
-                        .store_slice(response_address);
+                        .store_slice(response_address)
+                    .end_cell();
 
-    builder msg = begin_cell()
-                .store_uint(0x10, 6) 
-                .store_slice(jetton_wallet_address)
-                .store_coins(msg_value)
-                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
-                .store_uint(1, 1)
-                .store_ref(msg_body.end_cell());
-            
-    send_raw_message(msg.end_cell(), sending_mode);  
+    return send_cell_message(jetton_wallet_address, msg_value, msg_body, sending_mode);
 }
 
 
-builder int_to_str(int number) {
-    builder string = begin_cell();
-    tuple chars = null();
-    do {
-        int r = number~divmod(10);
-        chars = cons(r + 48, chars);
-    } until (number == 0);
-    do {
-        int char = chars~list_next();
-        string~store_uint(char, 8);
-    } until (null?(chars));
-    
-    return string;
+;; taken from Openlib (https://github.com/continuation-team/openlib.func/blob/main/openlib.func)
+builder store_number10(builder b, int x) asm """
+  ZERO                                                        // b x i=0
+  SWAP                                                        // b i=0 x
+  UNTIL:<{                                                    // b i x
+    10 PUSHINT DIVMOD                                         // b i x r
+    48 ADDCONST                                               // b i x r
+    s3 s1 s3 XCHG3                                            // r b x i
+    INC                                                       // r b x i
+    s1 s0 XCPU                                                // r b i x x
+    ISZERO
+  }>
+  DROP
+  REPEAT:<{ 8 STU }>                                          // ..rrr.. b i
+""";
+
+
+builder store_str_jettons(builder b, int jetton_amount, int one_jetton) {
+    (int int_part, int dec_part) = divmod(jetton_amount, one_jetton);
+
+    ;; displayed decimals = max(min(jetton_decimals, 4 + decimals - log10(int_part)), 0)
+    int max_dec_part = 10000 * one_jetton / int_part;
+    while (dec_part > max_dec_part) {
+        dec_part /= 10;
+    }
+    b = b.store_number10(int_part);
+    if (dec_part) {
+        b = b.store_uint(46, 8)  ;; store "." (dot)
+                .store_number10(dec_part);
+    }
+
+    return b;
 }
