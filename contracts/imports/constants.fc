@@ -36,8 +36,8 @@ const int op::report_static_data      = 0x8b771735;
 const int op::get_royalty_params      = 0x693d3950;
 const int op::report_royalty_params   = 0xa8cb00ad;
 const int op::claim                   = 0xa769de27;
-const int op::burn_all                = 0x7e6355fe;
-const int op::confirm_deploy          = 0x5941bb1d;
+const int op::burn_locked_jettons     = 0x6c24f413;
+const int op::confitm_initialization  = 0xe9bfea7f;
 
 
 {- EXCEPTIONS -}
@@ -55,6 +55,7 @@ const int exc::nft_burned = 52;
 const int exc::already_inited = 57;
 const int exc::not_inited = 60;
 const int exc::not_enough_ton = 61;
+const int exc::address_not_set = 62;
 
 
 
@@ -65,8 +66,8 @@ const int exc::unsupported_op = 0xffff;
 {- GAS (TODO) -}
 
 const int min_tons_for_storage = 25000000;   
-const int gas::deploy_sbt      = 125000000;
-const int gas::finish_lock     = 10000000;
+const int gas::create_vesting  = 125000000;
+const int gas::complete_lock   = 10000000;
 const int gas::send_jettons    = 40000000;
 const int gas::burn_jettons    = 30000000;
 const int gas::claim_jettons   = 42000000;

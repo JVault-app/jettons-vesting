@@ -51,23 +51,25 @@ global cell  storage::jetton_vesting_code;
         slice from_address  = in_msg_body~load_msg_addr();
 
         try {
+            throw_unless(exc::not_enough_ton, msg_value >= storage::creation_fee + gas::create_vesting);
             raw_reserve(storage::creation_fee, 4);
             slice payload = in_msg_body~load_uint(1) ? in_msg_body~load_ref().begin_parse() : in_msg_body;
-            int   jettons_to_lock       = in_msg_body~load_coins();
             slice jetton_minter_address = in_msg_body~load_msg_addr();
-            slice owner_address         = in_msg_body~load_msg_addr();
-            cell  content               = in_msg_body~load_ref();
+            slice jettons_owner_address = in_msg_body~load_msg_addr();
             int   first_unlock_time     = in_msg_body~load_uint(32);
             int   first_unlock_size     = in_msg_body~load_uint(32);
             int   cycle_length          = in_msg_body~load_uint(32);
             int   cycles_number         = in_msg_body~load_uint(16);
-            
+            cell  content               = in_msg_body~load_maybe_ref();
+
             cell msg_body = begin_cell()
-                                .store_slice(sender_address)
+                                .store_uint(op::initialize, 32)
+                                .store_uint(query_id, 64)
+                                .store_slice(jettons_owner_address)
                                 .store_slice(jetton_minter_address)
-                                .store_ref(content)
                                 .store_slice(sender_address)
                                 .store_coins(jetton_amount)
+                                .store_maybe_ref(content)
                                 .store_ref(
                                     begin_cell()
                                         .store_uint(first_unlock_time, 32)
@@ -95,20 +97,28 @@ global cell  storage::jetton_vesting_code;
         }
     }
 
-    if (op == op::confirm_deploy) {
+    if (op == op::confitm_initialization) {
         int item_index = in_msg_body~load_uint(128);
         slice expected_address = get_address_by_state_init(calculate_nft_item_state_init(item_index, storage::jetton_vesting_code, my_address(), 128));
         throw_unless(exc::incorrect_sender, equal_slices(expected_address, sender_address));
         
         slice jetton_wallet_address = in_msg_body~load_msg_addr();
-        int   jetton_amount         = in_msg_body~load_coins();
-        slice response_address      = in_msg_body~load_msg_addr();
+        int   jettons_to_lock       = in_msg_body~load_coins();
+        slice sbt_owner_address     = in_msg_body~load_msg_addr();
 
-        send_jettons(query_id, jetton_amount, sender_address, response_address, jetton_wallet_address, 0, 
-                     mode::carry_remaining_gas, gas::finish_lock, null());
+        send_jettons(query_id, jettons_to_lock, sender_address, sbt_owner_address, jetton_wallet_address, 0, 
+                     mode::carry_remaining_gas, gas::complete_lock, null());
         return ();
     }
     
+    if (op == op::withdraw_ton) {
+        throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::admin_address));
+        raw_reserve(min_tons_for_storage, 0);
+        send_builder_message(storage::admin_address, 0, 
+                             begin_cell().store_uint(0, 32).store_slice("TON fees withrawal"),
+                             mode::carry_remaining_balance);
+        return ();
+    }
 
     ;; if (op == 0xfffe) {  ;; set data
     ;;     set_data(in_msg_body~load_ref());
