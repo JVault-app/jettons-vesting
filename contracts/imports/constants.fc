@@ -14,6 +14,11 @@ const int op::provide_wallet_address  = 0x2c76b973;
 const int op::take_wallet_address     = 0xd1735400;
 const int op::burn_jetton             = 0x595f07bc;
 
+;; Factory
+const int op::create_lock             = 0x62e0667;
+const int op::change_creation_fee     = 0x610240f1;
+const int op::change_sbt_code         = 0xb97d7c00;
+
 ;; SBT
 const int op::initialize              = 0xd80dee82;
 const int op::transfer                = 0x5fcc3d14;
@@ -32,12 +37,14 @@ const int op::get_royalty_params      = 0x693d3950;
 const int op::report_royalty_params   = 0xa8cb00ad;
 const int op::claim                   = 0xa769de27;
 const int op::burn_all                = 0x7e6355fe;
-
+const int op::confirm_deploy          = 0x5941bb1d;
 
 
 {- EXCEPTIONS -}
 
 const int exc::out_of_gas = 13;
+
+const int exc::incorrect_jetton = 43;
 const int exc::not_unlocked_yet = 44;
 const int exc::not_enough_jettons = 45;
 const int exc::already_unlocked = 47;
@@ -47,6 +54,7 @@ const int exc::int_out_of_range = 51;
 const int exc::nft_burned = 52;
 const int exc::already_inited = 57;
 const int exc::not_inited = 60;
+const int exc::not_enough_ton = 61;
 
 
 
@@ -57,16 +65,12 @@ const int exc::unsupported_op = 0xffff;
 {- GAS (TODO) -}
 
 const int min_tons_for_storage = 25000000;   
-const int gas::purchase        = 20000000;
-const int gas::deploy_sbt      = 50000000;
+const int gas::deploy_sbt      = 125000000;
+const int gas::finish_lock     = 10000000;
 const int gas::send_jettons    = 40000000;
 const int gas::burn_jettons    = 30000000;
 const int gas::claim_jettons   = 42000000;
 const int gas::provide_addr    = 10000000;
-const int gas::end_sale        = 500000000;
-const int gas::update_wallet   = 20000000;
-const int gas::claim_ref       = 20000000;
-const int gas::deploy_sale     = 50000000;
 
 {- MESSAGE MODES -}
 

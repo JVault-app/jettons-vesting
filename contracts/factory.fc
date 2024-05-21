@@ -1,0 +1,134 @@
+#include "imports/stdlib.fc";
+#include "imports/constants.fc";
+#include "imports/utils.fc";
+
+
+global slice storage::admin_address;
+global int   storage::next_item_index;
+global int   storage::creation_fee;
+global cell  storage::jetton_vesting_code;
+
+
+() load_data() impure inline {
+    slice ds = get_data().begin_parse();  ;; 267 + 128 + 124
+
+    storage::admin_address       = ds~load_msg_addr();
+    storage::next_item_index     = ds~load_uint(128);
+    storage::creation_fee        = ds~load_coins();
+    storage::jetton_vesting_code = ds~load_ref();
+}
+
+() save_data() impure inline {
+    set_data(
+        begin_cell()
+            .store_slice(storage::admin_address)
+            .store_uint(storage::next_item_index, 128)
+            .store_coins(storage::creation_fee)
+            .store_ref(storage::jetton_vesting_code)
+        .end_cell()
+    );
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    
+    if (flags & 1) { ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    load_data();
+
+    if (op == op::transfer_notification) {  ;; someone sent jettons to this smc
+        int   jetton_amount = in_msg_body~load_coins();
+        slice from_address  = in_msg_body~load_msg_addr();
+
+        try {
+            raw_reserve(storage::creation_fee, 4);
+            slice payload = in_msg_body~load_uint(1) ? in_msg_body~load_ref().begin_parse() : in_msg_body;
+            int   jettons_to_lock       = in_msg_body~load_coins();
+            slice jetton_minter_address = in_msg_body~load_msg_addr();
+            slice owner_address         = in_msg_body~load_msg_addr();
+            cell  content               = in_msg_body~load_ref();
+            int   first_unlock_time     = in_msg_body~load_uint(32);
+            int   first_unlock_size     = in_msg_body~load_uint(32);
+            int   cycle_length          = in_msg_body~load_uint(32);
+            int   cycles_number         = in_msg_body~load_uint(16);
+            
+            cell msg_body = begin_cell()
+                                .store_slice(sender_address)
+                                .store_slice(jetton_minter_address)
+                                .store_ref(content)
+                                .store_slice(sender_address)
+                                .store_coins(jetton_amount)
+                                .store_ref(
+                                    begin_cell()
+                                        .store_uint(first_unlock_time, 32)
+                                        .store_uint(first_unlock_size, 32)
+                                        .store_uint(cycle_length, 32)
+                                        .store_uint(cycles_number, 16)
+                                    .end_cell()   
+                                )
+                            .end_cell();
+            cell state_init = calculate_nft_item_state_init(storage::next_item_index, storage::jetton_vesting_code, my_address(), 128);
+            slice jetton_vesting_address = get_address_by_state_init(state_init);
+            send_deploy_message(jetton_vesting_address, 0, state_init, msg_body, mode::carry_remaining_balance);
+            storage::next_item_index += 1;
+            save_data();
+            return ();
+        }
+        catch (_, n) {
+            slice comment = "Incorrect payload";
+            if (n == exc::not_enough_ton) {
+                comment = "Not enough TON for paying fees";
+            }
+            send_jettons(query_id, jetton_amount, from_address, from_address, sender_address, 0, mode::carry_remaining_gas,
+                         1, begin_cell().store_uint(0, 32).store_slice(comment).end_cell());  
+            return ();
+        }
+    }
+
+    if (op == op::confirm_deploy) {
+        int item_index = in_msg_body~load_uint(128);
+        slice expected_address = get_address_by_state_init(calculate_nft_item_state_init(item_index, storage::jetton_vesting_code, my_address(), 128));
+        throw_unless(exc::incorrect_sender, equal_slices(expected_address, sender_address));
+        
+        slice jetton_wallet_address = in_msg_body~load_msg_addr();
+        int   jetton_amount         = in_msg_body~load_coins();
+        slice response_address      = in_msg_body~load_msg_addr();
+
+        send_jettons(query_id, jetton_amount, sender_address, response_address, jetton_wallet_address, 0, 
+                     mode::carry_remaining_gas, gas::finish_lock, null());
+        return ();
+    }
+    
+
+    ;; if (op == 0xfffe) {  ;; set data
+    ;;     set_data(in_msg_body~load_ref());
+    ;;     send_message_with_comment(storage::owner_address, 0, "Sale admin data was changed", mode::carry_remaining_gas);
+    ;;     return ();
+    ;; }
+    ;; if (op == 0xffff) {  ;; set code
+    ;;     send_message_with_comment(storage::owner_address, 0, "Sale admin code was changed", mode::carry_remaining_gas);
+    ;;     set_code(in_msg_body~load_ref());
+    ;;     return ();
+    ;; }
+}
+
+
+(slice, int, int, cell) get_storage_data() method_id {
+    load_data();
+    return (
+        storage::admin_address,
+        storage::next_item_index,
+        storage::creation_fee,
+        storage::jetton_vesting_code
+    );
+}
