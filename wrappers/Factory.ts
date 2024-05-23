@@ -1,9 +1,18 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 
-export type FactoryConfig = {};
+export type FactoryConfig = {
+    admin_address: Address;
+    creation_fee: bigint;
+    jetton_vesting_code: Cell;
+};
 
 export function factoryConfigToCell(config: FactoryConfig): Cell {
-    return beginCell().endCell();
+    return beginCell()
+        .storeAddress(config.admin_address)
+        .storeUint(0, 128)
+        .storeCoins(config.creation_fee)
+        .storeRef(config.jetton_vesting_code)
+    .endCell();
 }
 
 export class Factory implements Contract {
