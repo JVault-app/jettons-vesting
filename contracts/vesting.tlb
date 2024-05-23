@@ -89,17 +89,20 @@ jetton_vesting_storage#_
     factory_address:MsgAddress
     index:uint128
     owner_address:MsgAddress
-    jetton_wallet_address:MsgAddress
-    jetton_address_set:Bool
-    factory_jetton_wallet:MsgAddress
-    locked_jettons:Coins  // amount of locked jettons
-    jettons_locked:Bool  // were jettons locked?
-    claimed_times:uint16
-    claimed_jettons:Coins
-    first_unlock_time:uint32
-    first_unlock_size:uint32
-    cycle_length:uint32
-    cycles_number:uint16
+    jetton_minter_address:MsgAddress
+    content:(Maybe ^Cell)
+    _:^[
+        jetton_wallet_address:MsgAddress
+        factory_jetton_wallet:MsgAddress
+        locked_jettons:Coins  // amount of locked jettons
+        jettons_locked:Bool  // were jettons locked?
+        claimed_times:uint16
+        claimed_jettons:Coins
+        first_unlock_time:uint32
+        first_unlock_size:uint32
+        cycle_length:uint32
+        cycles_number:uint16
+    ]
 = JettonVestingStorage;
 
 // =======================================================================
@@ -160,9 +163,8 @@ report_address_message#_ _:TakeWalletMsg = InternalMsgBody;
 // 4.
 // После получения TakeWalletMsg, на контракте Jetton Vesting проверяется, что отправитель корректный,
 // контракт инициализирован с помощью Factory (`init` == true), а `jetton_wallet_address` еще не был
-// установлен (`address_set` == false). Если проверка успешна, то устанавливается полученный
-// `jetton_wallet_address`, а на адрес Factory отправляется сообщение о поддтверждении завершения
-// инициализации Jetton Vesting со следующим Payload:
+// установлен (== null). Если проверка успешна, то устанавливается полученный `jetton_wallet_address`,
+// а на адрес Factory отправляется сообщение о завершении инициализации Jetton Vesting со следующим Payload:
 confirm_initialization_message#e9bfea7f
     query_id:uint64
     item_index:uint128
@@ -192,7 +194,7 @@ returned_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;
 
 // Во время всех нижеперечисленных транзакций на контракте Jetton Vesting выполняется проверка того,
 // что сообщения были отправлены владельцем контракта и инициализация Jetton Vesting завершена
-// (`init` == true, `address_set` == true)
+// (`init` == true, `jetton_wallet_address` != null())
 
 // 1.
 // Владелец может заклеймить жетоны со смарт-контракта, когда подошло время их разблокировки.

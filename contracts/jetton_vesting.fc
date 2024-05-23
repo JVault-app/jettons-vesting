@@ -9,8 +9,8 @@ global slice storage::factory_address;       ;; address of the factory that depl
 global int   storage::index; 
 
 global slice storage::owner_address;         ;; owner of the locked jettons (MsgAddress)
-global slice storage::jetton_wallet_address; ;; locked jetton wallet address (MsgAddress)
-global int   storage::jetton_address_set?;   ;; was the jetton wallet address of this contract set? (bool)
+global slice storage::jetton_wallet_address; ;; jetton wallet address of this contract (MsgAddress)
+global slice storage::jetton_minter_address; ;; jetton minter address (MsgAddress)
 global cell  storage::content;
 
 global slice storage::factory_jetton_wallet; ;; address of factory's jetton wallet from which jettons are transferred (MsgAddress)
@@ -34,11 +34,11 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     ifnot (ds.slice_empty?()) {
         storage::init? = true;
         storage::owner_address         = ds~load_msg_addr();
-        storage::jetton_wallet_address = ds~load_msg_addr();
-        storage::jetton_address_set?   = ds~load_int(1);  ;; 0 when deploy
+        storage::jetton_minter_address = ds~load_msg_addr();
         storage::content               = ds~load_maybe_ref();
 
         slice internal_ds = ds~load_ref().begin_parse();  ;; 267 + 124 + 16 + 124 + 32 + 32 + 32 + 16 = 643; refs = 0;
+        storage::jetton_wallet_address = internal_ds~load_msg_addr();
         storage::factory_jetton_wallet = internal_ds~load_msg_addr();
         storage::locked_jettons        = internal_ds~load_coins();
         storage::jettons_locked?       = internal_ds~load_int(1);
@@ -62,11 +62,10 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                 .store_slice(storage::factory_address)
                 .store_uint(storage::index, 128)
                 .store_slice(storage::owner_address)
-                .store_slice(storage::jetton_wallet_address)
-                .store_int(storage::jetton_address_set?, 1)
-                .store_maybe_ref(storage::content)
+                .store_slice(storage::jetton_minter_address)
                 .store_ref(
                     begin_cell()
+                        .store_slice(storage::jetton_wallet_address)
                         .store_slice(storage::factory_jetton_wallet)
                         .store_coins(storage::locked_jettons)
                         .store_int(storage::jettons_locked?, 1)
@@ -78,6 +77,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                         .store_uint(storage::cycles_number, 16)
                     .end_cell()
                 )
+                .store_maybe_ref(storage::content)
             .end_cell()
     );
 }
@@ -110,8 +110,8 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         throw_unless(405, equal_slices(sender_address, storage::factory_address));
         
         storage::owner_address         = in_msg_body~load_msg_addr();
-        storage::jetton_wallet_address = in_msg_body~load_msg_addr();
-        storage::jetton_address_set?   = false;
+        storage::jetton_minter_address = in_msg_body~load_msg_addr();
+        storage::jetton_wallet_address = null();
         storage::factory_jetton_wallet = in_msg_body~load_msg_addr();
         storage::locked_jettons        = in_msg_body~load_coins();
         storage::jettons_locked?       = false;
@@ -140,10 +140,9 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     throw_unless(exc::not_inited, storage::init?);
 
     if (op == op::take_wallet_address) {
-        throw_if(exc::already_inited, storage::jetton_address_set?);
-        throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::jetton_wallet_address));
+        throw_unless(exc::already_inited, null?(storage::jetton_wallet_address));
+        throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::jetton_minter_address));
         
-        storage::jetton_address_set? = true;
         storage::jetton_wallet_address = in_msg_body~load_msg_addr();
 
         builder msg_body = begin_cell()
@@ -159,7 +158,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         return ();
     }
 
-    throw_unless(exc::address_not_set, storage::jetton_address_set?);
+    throw_if(exc::address_not_set, null?(storage::jetton_wallet_address));
 
     if (op == op::transfer_notification) {
         int jetton_amount = in_msg_body~load_coins();
@@ -187,30 +186,21 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         throw_unless(exc::incorrect_sender, equal_slices(storage::owner_address, sender_address));
         throw_unless(exc::not_unlocked_yet, now() > storage::first_unlock_time);
         throw_unless(exc::not_enough_ton, msg_value >= gas::send_jettons);
-
-        int total_unlocks = 1 + min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
-        int available_percent = muldiv((total_unlocks - storage::claimed_times), percent_devider, storage::cycles_number);
-        if (storage::claimed_times == 0) {
-            available_percent += storage::first_unlock_size;
-        }
-
-        int available_jettons = 0;
-        int jetton_send_mode = mode::carry_remaining_gas;
-        if (total_unlocks == storage::cycles_number + 1) {
-            available_jettons = storage::locked_jettons - storage::claimed_jettons;
-            jetton_send_mode = mode::carry_remaining_balance;
-            storage::owner_address = null_addr();
-        }
-        else {
-            available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider);
+        
+        int total_unlocks = min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
+        int available_percent = storage::first_unlock_size + muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number);
+        int available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider) - storage::claimed_jettons;
+        int sending_mode = mode::carry_remaining_gas;
+        if (total_unlocks == storage::cycles_number) {
+            sending_mode = mode::carry_remaining_balance;
         }
         
         throw_unless(exc::nothing_to_claim, available_jettons);
 
-        send_jettons(query_id, available_jettons, sender_address, sender_address, storage::jetton_wallet_address, 0, jetton_send_mode,
-                     1, begin_cell().store_uint(0, 32).store_slice("Jettons unlock #").store_number10(total_unlocks).end_cell());  
-
-        storage::claimed_times = total_unlocks; 
+        send_jettons(query_id, available_jettons, sender_address, sender_address, storage::jetton_wallet_address, 0, sending_mode,
+                     1, begin_cell().store_uint(0, 32).store_slice("Jettons unlock #").store_number10(total_unlocks + 1).end_cell()); 
+        
+        storage::claimed_times = total_unlocks + 1; 
         storage::claimed_jettons += available_jettons;
         save_data();
         return ();
@@ -424,7 +414,7 @@ int get_revoked_time() method_id {
 }
 
 
-(int, slice, int, slice, slice, int, cell, slice, int, int, int, int, int, int, int) get_storage_data() method_id {
+(int, slice, int, slice, slice, slice, cell, slice, int, int, int, int, int, int, int, int) get_storage_data() method_id {
     load_data();
 
     return (
@@ -432,11 +422,12 @@ int get_revoked_time() method_id {
         storage::factory_address,
         storage::index,
         storage::owner_address,
+        storage::jetton_minter_address,
         storage::jetton_wallet_address,
-        storage::jetton_address_set?,
         storage::content,
         storage::factory_jetton_wallet,
         storage::locked_jettons,
+        storage::jettons_locked?,
         storage::claimed_times,
         storage::claimed_jettons,
         storage::first_unlock_time,
