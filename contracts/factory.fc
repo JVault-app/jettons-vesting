@@ -53,14 +53,14 @@ global cell  storage::jetton_vesting_code;
         try {
             throw_unless(exc::not_enough_ton, msg_value >= storage::creation_fee + gas::create_vesting);
             raw_reserve(storage::creation_fee, 4);
-            slice payload = in_msg_body~load_uint(1) ? in_msg_body~load_ref().begin_parse() : in_msg_body;
-            slice jetton_minter_address = in_msg_body~load_msg_addr();
-            slice jettons_owner_address = in_msg_body~load_msg_addr();
-            int   first_unlock_time     = in_msg_body~load_uint(32);
-            int   first_unlock_size     = in_msg_body~load_uint(32);
-            int   cycle_length          = in_msg_body~load_uint(32);
-            int   cycles_number         = in_msg_body~load_uint(16);
-            cell  content               = in_msg_body~load_maybe_ref();
+            slice payload = in_msg_body~load_ref().begin_parse();
+            slice jetton_minter_address = payload~load_msg_addr();
+            slice jettons_owner_address = payload~load_msg_addr();
+            int   first_unlock_time     = payload~load_uint(32);
+            int   first_unlock_size     = payload~load_uint(32);
+            int   cycle_length          = payload~load_uint(32);
+            int   cycles_number         = payload~load_uint(16);
+            cell  content               = payload~load_maybe_ref();
 
             cell msg_body = begin_cell()
                                 .store_uint(op::initialize, 32)
@@ -141,4 +141,10 @@ global cell  storage::jetton_vesting_code;
         storage::creation_fee,
         storage::jetton_vesting_code
     );
+}
+
+slice get_nft_address_by_index(int index) method_id {
+    load_data();
+    cell state_init = calculate_nft_item_state_init(index, storage::jetton_vesting_code, my_address(), 128);
+    return get_address_by_state_init(state_init);
 }

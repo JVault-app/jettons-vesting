@@ -88,21 +88,23 @@ factory_storage#_
 jetton_vesting_storage#_
     factory_address:MsgAddress
     index:uint128
-    owner_address:MsgAddress
-    jetton_minter_address:MsgAddress
-    content:(Maybe ^Cell)
-    _:^[
-        jetton_wallet_address:MsgAddress
-        factory_jetton_wallet:MsgAddress
-        locked_jettons:Coins  // amount of locked jettons
-        jettons_locked:Bool  // were jettons locked?
-        claimed_times:uint16
-        claimed_jettons:Coins
-        first_unlock_time:uint32
-        first_unlock_size:uint32
-        cycle_length:uint32
-        cycles_number:uint16
-    ]
+    _:(Optional [
+        owner_address:MsgAddress
+        jetton_minter_address:MsgAddress
+        content:(Maybe ^Cell)
+        _:^[
+            jetton_wallet_address:MsgAddress
+            factory_jetton_wallet:MsgAddress
+            locked_jettons:Coins  // amount of locked jettons
+            jettons_locked:Bool  // were jettons locked?
+            claimed_times:uint16
+            claimed_jettons:Coins
+            first_unlock_time:uint32
+            first_unlock_size:uint32
+            cycle_length:uint32
+            cycles_number:uint16
+        ]
+    ])
 = JettonVestingStorage;
 
 // =======================================================================

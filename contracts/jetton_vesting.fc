@@ -27,8 +27,8 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 () load_data() impure inline {
     slice ds = get_data().begin_parse();  ;; bits = 267 + 128 + 267 + 267 + 1 = 930; refs = 2;
 
-    storage::factory_address       = ds~load_msg_addr();
     storage::index                 = ds~load_uint(128);
+    storage::factory_address       = ds~load_msg_addr();
     storage::init? = false;
 
     ifnot (ds.slice_empty?()) {
@@ -37,7 +37,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         storage::jetton_minter_address = ds~load_msg_addr();
         storage::content               = ds~load_maybe_ref();
 
-        slice internal_ds = ds~load_ref().begin_parse();  ;; 267 + 124 + 16 + 124 + 32 + 32 + 32 + 16 = 643; refs = 0;
+        slice internal_ds = ds~load_ref().begin_parse();  ;; 267 + 267 + 124 + 1 + 16 + 124 + 32 + 32 + 32 + 16 = 911; refs = 0;
         storage::jetton_wallet_address = internal_ds~load_msg_addr();
         storage::factory_jetton_wallet = internal_ds~load_msg_addr();
         storage::locked_jettons        = internal_ds~load_coins();
@@ -59,10 +59,11 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 () save_data() impure {
     set_data(
             begin_cell()
-                .store_slice(storage::factory_address)
                 .store_uint(storage::index, 128)
+                .store_slice(storage::factory_address)
                 .store_slice(storage::owner_address)
                 .store_slice(storage::jetton_minter_address)
+                .store_maybe_ref(storage::content)
                 .store_ref(
                     begin_cell()
                         .store_slice(storage::jetton_wallet_address)
@@ -77,7 +78,6 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                         .store_uint(storage::cycles_number, 16)
                     .end_cell()
                 )
-                .store_maybe_ref(storage::content)
             .end_cell()
     );
 }
@@ -111,7 +111,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         
         storage::owner_address         = in_msg_body~load_msg_addr();
         storage::jetton_minter_address = in_msg_body~load_msg_addr();
-        storage::jetton_wallet_address = null();
+        storage::jetton_wallet_address = null_addr();
         storage::factory_jetton_wallet = in_msg_body~load_msg_addr();
         storage::locked_jettons        = in_msg_body~load_coins();
         storage::jettons_locked?       = false;
@@ -131,7 +131,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                             .store_slice(my_address())
                             .store_uint(0, 1);
 
-        send_builder_message(storage::jetton_wallet_address, msg_value - min_tons_for_storage, msg_body, mode::simple);
+        send_builder_message(storage::jetton_minter_address, msg_value - min_tons_for_storage, msg_body, mode::simple);
 
         save_data();
         return ();
@@ -140,7 +140,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     throw_unless(exc::not_inited, storage::init?);
 
     if (op == op::take_wallet_address) {
-        throw_unless(exc::already_inited, null?(storage::jetton_wallet_address));
+        throw_unless(exc::already_inited, equal_slices(storage::jetton_wallet_address, null_addr()));
         throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::jetton_minter_address));
         
         storage::jetton_wallet_address = in_msg_body~load_msg_addr();
@@ -171,7 +171,8 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             }
 
             storage::jettons_locked? = true;
-            send_excess(storage::owner_address, query_id, 0, mode::carry_remaining_gas);
+            storage::locked_jettons = jetton_amount;
+            send_builder_message(storage::owner_address,0, begin_cell().store_uint(op::ownership_assigned_nft, 32).store_uint(query_id, 64).store_uint(0, 3),mode::carry_remaining_gas);
             save_data();
         }
         catch (_, n) {
@@ -195,7 +196,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             sending_mode = mode::carry_remaining_balance;
         }
         
-        throw_unless(exc::nothing_to_claim, available_jettons);
+        throw_unless(exc::nothing_to_claim, available_jettons > 0);
 
         send_jettons(query_id, available_jettons, sender_address, sender_address, storage::jetton_wallet_address, 0, sending_mode,
                      1, begin_cell().store_uint(0, 32).store_slice("Jettons unlock #").store_number10(total_unlocks + 1).end_cell()); 
@@ -211,14 +212,13 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         throw_unless(exc::not_enough_ton, msg_value >= gas::burn_jettons);
 
         int max_jettons_to_burn = storage::locked_jettons - storage::claimed_jettons;
-        int jettons_to_burn = in_msg_body.slice_bits() ? in_msg_body~load_coins() : max_jettons_to_burn;
+        int jettons_to_burn = in_msg_body.slice_empty?() ? max_jettons_to_burn : in_msg_body~load_coins();
         if (jettons_to_burn == max_jettons_to_burn) {
             burn_jettons(query_id, jettons_to_burn, storage::jetton_wallet_address, storage::owner_address, 0, mode::carry_remaining_balance);
             storage::owner_address = null_addr();
         }
         elseif (jettons_to_burn < max_jettons_to_burn) {
             burn_jettons(query_id, jettons_to_burn, storage::jetton_wallet_address, storage::owner_address, 0, mode::carry_remaining_balance);
-            storage::claimed_jettons = muldiv(storage::claimed_jettons, storage::locked_jettons - jettons_to_burn, storage::locked_jettons);
             storage::locked_jettons -= jettons_to_burn;
         }
         else {
@@ -240,82 +240,64 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     }
 
     ;; Default SBT start
-    {
-        if (op == op::request_owner) {
-            slice dest = in_msg_body~load_msg_addr();
-            cell body = in_msg_body~load_ref();
-            int with_content = in_msg_body~load_uint(1);
-
-            var msg = begin_cell()
-                        .store_uint(op::owner_info, 32)
-                        .store_uint(query_id, 64)
-                        .store_uint(storage::index, 256)
-                        .store_slice(sender_address)
-                        .store_slice(storage::owner_address)
-                        .store_ref(body)
-                        .store_uint(0, 64)
-                        .store_uint(with_content, 1);
-
-            if (with_content != 0) {
-                msg = msg.store_ref(begin_cell().end_cell());
-            }
-
-            send_cell_message(dest, 0, msg.end_cell(), mode::carry_remaining_gas);
-            return ();
-        }
-
-        if (op == op::prove_ownership) {
-            throw_unless(401, equal_slices(storage::owner_address, sender_address));
-
-            slice dest = in_msg_body~load_msg_addr();
-            cell body = in_msg_body~load_ref();
-            int with_content = in_msg_body~load_uint(1);
-
-            var msg = begin_cell()
-                        .store_uint(op::ownership_proof, 32)
-                        .store_uint(query_id, 64)
-                        .store_uint(storage::index, 256)
-                        .store_slice(storage::owner_address)
-                        .store_ref(body)
-                        .store_uint(0, 64)  ;; revoked_at
-                        .store_uint(with_content, 1);
-
-            if (with_content != 0) {
-                msg = msg.store_ref(begin_cell().end_cell());
-            }
-
-            send_cell_message(dest, 0, msg.end_cell(), mode::carry_remaining_gas);
-            return ();
-        }
-
-        if (op == op::get_static_data) {
-            var msg = begin_cell()
-                        .store_uint(op::report_static_data, 32)
-                        .store_uint(query_id, 64)
-                        .store_uint(storage::index, 256)
-                        .store_slice(storage::factory_address);
-
-            send_cell_message(sender_address, 0, msg.end_cell(), mode::carry_remaining_gas);
-            return ();
-        }
-
-        if (op == op::take_excess) {
-            throw_unless(401, equal_slices(storage::owner_address, sender_address));
-
-            ;; reserve amount for storage
-            raw_reserve(min_tons_for_storage, 0);
-
-            send_builder_message(sender_address, 0, begin_cell().store_uint(op::excesses, 32).store_uint(query_id, 64), mode::carry_remaining_balance);
-            return ();
-        }
-
-
-        if (op == op::transfer) {
-            throw(413);
-        }
-
-        throw(0xffff);
+    if (op == op::request_owner) {
+        slice dest = in_msg_body~load_msg_addr();
+        cell body = in_msg_body~load_ref();
+        int with_content = in_msg_body~load_int(1);
+        var msg = begin_cell()
+                    .store_uint(op::owner_info, 32)
+                    .store_uint(query_id, 64)
+                    .store_uint(storage::index, 256)
+                    .store_slice(sender_address)
+                    .store_slice(storage::owner_address)
+                    .store_ref(body)
+                    .store_uint(0, 64);
+        msg = with_content ? msg.store_maybe_ref(storage::content) : msg.store_int(0, 1);
+        send_cell_message(dest, 0, msg.end_cell(), mode::carry_remaining_gas);
+        return ();
     }
+
+    if (op == op::prove_ownership) {
+        throw_unless(401, equal_slices(storage::owner_address, sender_address));
+        slice dest = in_msg_body~load_msg_addr();
+        cell body = in_msg_body~load_ref();
+        int with_content = in_msg_body~load_uint(1);
+        var msg = begin_cell()
+                    .store_uint(op::ownership_proof, 32)
+                    .store_uint(query_id, 64)
+                    .store_uint(storage::index, 256)
+                    .store_slice(storage::owner_address)
+                    .store_ref(body)
+                    .store_uint(0, 64);  ;; revoked_at
+        msg = with_content ? msg.store_maybe_ref(storage::content) : msg.store_int(0, 1);
+        send_cell_message(dest, 0, msg.end_cell(), mode::carry_remaining_gas);
+        return ();
+    }
+
+    if (op == op::get_static_data) {
+        var msg = begin_cell()
+                    .store_uint(op::report_static_data, 32)
+                    .store_uint(query_id, 64)
+                    .store_uint(storage::index, 256)
+                    .store_slice(storage::factory_address);
+        send_cell_message(sender_address, 0, msg.end_cell(), mode::carry_remaining_gas);
+        return ();
+    }
+
+    if (op == op::take_excess) {
+        throw_unless(401, equal_slices(storage::owner_address, sender_address));
+        ;; reserve amount for storage
+        raw_reserve(min_tons_for_storage, 0);
+        send_builder_message(sender_address, 0, begin_cell().store_uint(op::excesses, 32).store_uint(query_id, 64), mode::carry_remaining_balance);
+        return ();
+    }
+
+
+    if (op == op::transfer) {
+        throw(413);
+    }
+
+    throw(0xffff);
     ;; default SBT end
 }
 
@@ -357,7 +339,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             symbol = "tokens";
         }
 
-        builder sbt_name = begin_cell().store_str_jettons(storage::locked_jettons, one_jetton, symbol).store_slice(" locked on JVault.app");
+        builder sbt_name = begin_cell().store_uint(0,8).store_str_jettons(storage::locked_jettons, one_jetton, symbol).store_slice(" locked on JVault.app");
         if (burned) {
             sbt_name = sbt_name.store_slice(" (burned)");
         }
