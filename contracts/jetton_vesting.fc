@@ -233,7 +233,11 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     if (op == op::withdraw_jetton) {
         throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::owner_address));
         slice requested_wallet_address = in_msg_body~load_msg_addr();
-        throw_if(exc::incorrect_jetton, equal_slices(requested_wallet_address, storage::jetton_wallet_address));
+
+        if (now() < storage::first_unlock_time + storage::cycles_number * storage::cycle_length) {
+            throw_if(exc::incorrect_jetton, equal_slices(requested_wallet_address, storage::jetton_wallet_address));
+        }
+
         int jetton_amount = in_msg_body~load_coins();
         send_jettons(query_id, jetton_amount, sender_address, sender_address, requested_wallet_address, 0, mode::carry_remaining_gas,
                      0, begin_cell().store_uint(0, 32).store_slice("Jettons withdrawed").end_cell());
@@ -357,10 +361,10 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                                 .store_uint(10, 8);  ;; store '\n' (newline)
 
         builder description_inner_cell = begin_cell()
-                                            .store_slice("Available to withdraw: ")
-                                            .store_str_jettons(available_jettons, one_jetton, symbol)
-                                            .store_uint(10, 8)  ;; store '\n' (newline)
-                                            .store_uint(10, 8)  ;; store '\n' (newline)
+                                            ;; .store_slice("Available to withdraw: ")
+                                            ;; .store_str_jettons(available_jettons, one_jetton, symbol)
+                                            ;; .store_uint(10, 8)  ;; store '\n' (newline)
+                                            ;; .store_uint(10, 8)  ;; store '\n' (newline)
                                             .store_slice("First unlock timestamp: ")
                                             .store_number10(storage::first_unlock_time)
                                             .store_uint(10, 8)  ;; store '\n' (newline)
@@ -372,12 +376,11 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                 begin_cell()
                     .store_uint(10, 8)  ;; store '\n' (newline);
                     .store_slice("Vesting cycles number: ")
-                    .store_uint(10, 8)  ;; store '\n' (newline);
                     .store_number10(storage::cycles_number)
                     .store_uint(10, 8)  ;; store '\n' (newline);
                     .store_slice("Vesting cycle length: ")
                     .store_number10(storage::cycle_length / ONE_DAY)
-                    .store_slice("days")
+                    .store_slice(" days")
                 .end_cell()
             );
         }
