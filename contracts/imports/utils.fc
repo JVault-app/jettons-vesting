@@ -129,11 +129,16 @@ builder store_str_float(builder b, int number, int ten_pow_decimals) {
     (int int_part, int dec_part) = divmod(number, ten_pow_decimals);
 
     ;; displayed decimals = max(min(jetton_decimals, 4 + decimals - log10(int_part)), 0)
-    int max_dec_part = 10000 * ten_pow_decimals / int_part;
-    while (dec_part > max_dec_part) {
-        dec_part /= 10;
+    if (int_part) {
+        int max_dec_part = 10000 * ten_pow_decimals / int_part;
+        while (dec_part > max_dec_part) {
+            dec_part /= 10;
+        }
+        b = b.store_number10(int_part);
     }
-    b = b.store_number10(int_part);
+    else {
+        b = b.store_number10(int_part);
+    }
     if (dec_part) {
         b = b.store_uint(46, 8)  ;; store "." (dot)
                 .store_number10(dec_part);

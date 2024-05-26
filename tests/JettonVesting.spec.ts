@@ -7,6 +7,7 @@ import { Factory } from '../wrappers/Factory';
 import { JettonWallet } from '../wrappers/JettonWallet';
 import { JettonMinter } from '../wrappers/JettonMinter';
 import { ErrorCodes } from '../wrappers/helpers/constants';
+import { buildOnchainMetadata } from '../wrappers/buildOnchain';
 
 describe('JettonVesting', () => {
     let vestingCode: Cell;
@@ -51,12 +52,18 @@ describe('JettonVesting', () => {
         factoryJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(factory.address)))
         vestingJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(vesting.address)))
 
-        await ownerJetton.sendTransfer(owner.getSender(), toNano("2"), toNano(1000), factory.address, owner.address, null, toNano(1), Factory.createDeployVestingPayload({jettonMinter: jettonMinter.address, jettonsOwner: owner.address, firstUnlockTime: blockchain.now!! + 1000, firstUnlockSize: 10000000, cycleLength: 100, cyclesNumber: 9, content: null}))
+        await ownerJetton.sendTransfer(owner.getSender(), toNano("2"), toNano(1000), factory.address, owner.address, null, toNano(1), Factory.createDeployVestingPayload({jettonMinter: jettonMinter.address, jettonsOwner: owner.address, firstUnlockTime: blockchain.now!! + 1000, firstUnlockSize: 10000000, cycleLength: 100, cyclesNumber: 9, content: buildOnchainMetadata({decimals: 9, symbol: "boba", image: "https://media.tenor.com/4cTJ4sDdIn0AAAAe/aboba.png"})}))
         expect((await vesting.getStorage() as JettonVestingConfigInited).jettonWalletAddress).toEqualAddress(vestingJetton.address)
         expect(await vestingJetton.getJettonBalance()).toEqual(toNano(1000))
         expect((await vesting.getStorage() as JettonVestingConfigInited).jettonsLocked).toBeTruthy()
     });
 
+    it('should show data', async () => {
+        // blockchain.verbosity.blockchainLogs = true
+        // console.log(await vesting.getH())
+        let data = await vesting.getData();
+        console.log(data)
+    })
     it('should send every cycle', async () => {
         // blockchain.verbosity.vmLogs = "vm_logs"
 

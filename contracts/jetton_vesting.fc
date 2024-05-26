@@ -194,6 +194,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         int sending_mode = mode::carry_remaining_gas;
         if (total_unlocks == storage::cycles_number) {
             sending_mode = mode::carry_remaining_balance;
+            storage::owner_address = null_addr();
         }
         
         throw_unless(exc::nothing_to_claim, available_jettons > 0);
@@ -305,7 +306,6 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 ;;
 ;;  GET Methods
 ;;
-
 (int, int, slice, slice, cell) get_nft_data() method_id {
     load_data();
     
@@ -315,16 +315,16 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         if (equal_slices(storage::owner_address, null_addr())) {
             burned = true;
         }
-        else {
-            int total_unlocks = 1 + min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
-            int available_percent = muldiv((total_unlocks - storage::claimed_times), percent_devider, storage::cycles_number);
-            if (storage::claimed_times == 0) {
-                available_percent += storage::first_unlock_size;
-            }
-            available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider);
+        elseif (now() > storage::first_unlock_time) {
+            int total_unlocks = min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
+            int available_percent = storage::first_unlock_size + muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number);
+            available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider) - storage::claimed_jettons;
         }
+        slice content_cs = storage::content.begin_parse();
+        cell dict_content = content_cs~load_ref();
 
-        (slice decimals_slice, int success) = storage::content.udict_get?(256, "decimals"H);
+        (slice decimals_slice, int success) = dict_content~udict_delete_get?(256, "decimals"H);
+        decimals_slice = decimals_slice~load_ref().begin_parse();
         int decimals = 9;
         if (success) {
             decimals = decimals_slice~load_uint(8);
@@ -334,9 +334,12 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             one_jetton *= 10;
         }
 
-        (slice symbol, success) = storage::content~udict_delete_get?(256, "symbol"H);
+        (slice symbol, success) = dict_content~udict_delete_get?(256, "symbol"H);
         ifnot (success) {
             symbol = "tokens";
+        } else {
+            symbol = symbol~load_ref().begin_parse();
+            symbol~skip_bits(8);
         }
 
         builder sbt_name = begin_cell().store_uint(0,8).store_str_jettons(storage::locked_jettons, one_jetton, symbol).store_slice(" locked on JVault.app");
@@ -365,7 +368,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                                             .store_str_float(storage::first_unlock_size, percent_devider / 100)
                                             .store_uint(37, 8);  ;; store '%' (percent symbol)
         if (storage::cycles_number) {
-            sbt_descriprion = description_inner_cell.store_ref(
+            description_inner_cell = description_inner_cell.store_ref(
                 begin_cell()
                     .store_uint(10, 8)  ;; store '\n' (newline);
                     .store_slice("Vesting cycles number: ")
@@ -380,8 +383,9 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         }
         sbt_descriprion = sbt_descriprion.store_ref(description_inner_cell.end_cell());
 
-        storage::content~udict_set(256, "name"H, sbt_name.end_cell().begin_parse());
-        storage::content~udict_set(256, "description"H, sbt_descriprion.end_cell().begin_parse());
+        dict_content~udict_set(256, "name"H, begin_cell().store_ref(sbt_name.end_cell()).end_cell().begin_parse());
+        dict_content~udict_set(256, "description"H, begin_cell().store_ref(sbt_descriprion.end_cell()).end_cell().begin_parse());
+        return (storage::init?, 0, null_addr(), storage::owner_address, begin_cell().store_uint(0, 8).store_dict(dict_content).end_cell());
     }
         
     return (storage::init?, 0, null_addr(), storage::owner_address, storage::content);

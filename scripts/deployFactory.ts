@@ -4,7 +4,7 @@ import { compile, NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
     const factory = provider.open(Factory.createFromConfig({
-        admin_address: provider.sender().address as Address,
+        admin_address: provider.sender().address!!,
         creation_fee: toNano('0.05'),
         jetton_vesting_code: await compile('JettonVesting')
     }, await compile('Factory')));

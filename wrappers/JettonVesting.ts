@@ -143,7 +143,7 @@ export class JettonVesting implements Contract {
         return {
             init: stack.readBoolean(),
             index: stack.readBigNumber(),
-            collection: stack.readAddress(),
+            collection: stack.readAddressOpt(),
             owner: stack.readAddressOpt(),
             content: stack.readCell()
         }
