@@ -1,0 +1,241 @@
+// BASIC
+// https://github.com/ton-blockchain/ton/blob/master/crypto/block/block.tlb
+
+_ = Null;
+
+bool_false$0 = Bool;
+bool_true$1 = Bool;
+
+nothing$0 {X:Type} = Maybe X;
+just$1 {X:Type} value:X = Maybe X;
+
+left$0 {X:Type} {Y:Type} value:X = Either X Y;
+right$1 {X:Type} {Y:Type} value:Y = Either X Y;
+
+addr_none$00 = MsgAddressExt;
+addr_extern$01 len:(## 9) external_address:(bits len)
+             = MsgAddressExt;
+anycast_info$_ depth:(#<= 30) { depth >= 1 }
+   rewrite_pfx:(bits depth) = Anycast;
+addr_std$10 anycast:(Maybe Anycast)
+   workchain_id:int8 address:bits256  = MsgAddressInt;
+addr_var$11 anycast:(Maybe Anycast) addr_len:(## 9)
+   workchain_id:int32 address:(bits addr_len) = MsgAddressInt;
+_ _:MsgAddressInt = MsgAddress;
+_ _:MsgAddressExt = MsgAddress;
+
+var_uint$_ {n:#} len:(#< n) value:(uint (len * 8))
+         = VarUInteger n;
+var_int$_ {n:#} len:(#< n) value:(int (len * 8))
+        = VarInteger n;
+nanograms$_ amount:(VarUInteger 16) = Grams;
+
+_ grams:Grams = Coins;
+
+optional_nothing$_ {X: Type} = Optional X;
+optional_something$_ {X: Type} value:X = Optional X;
+
+// =======================================================================
+// jettons
+
+jetton_transfer_notification#7362d09c {Payload: Type}
+    query_id:uint64
+    amount:Coins
+    sender:MsgAddress
+    forward_payload:(Either Payload ^Payload)
+= JettonTransferNotificationMsg Payload;
+
+transfer#0f8a7ea5 {Payload: Type}
+    query_id:uint64
+    amount:Coins
+    destination:MsgAddress
+    response_destination:MsgAddress
+    custom_payload:(Maybe ^Cell)
+    forward_ton_amount:Coins
+    forward_payload:(Either Payload ^Payload)
+= JettonTransferMsg Payload;
+
+burn#595f07bc
+  query_id:uint64
+  amount:Coins
+  response_destination:MsgAddress
+  custom_payload:(Maybe ^Cell)
+= JettonBurnMsg;
+
+provide_wallet_address#2c76b973
+    query_id:uint64
+    owner_address:MsgAddress
+    include_address:Bool
+= ProvideWalletMsg;
+
+take_wallet_address#d1735400
+    query_id:uint64
+    wallet_address:MsgAddress
+    owner_address:(Maybe ^MsgAddress)
+= TakeWalletMsg;
+
+// =======================================================================
+
+// factory.fc & jetton_vesting.fc storages
+
+factory_storage#_
+    admin_address:MsgAddress
+    next_item_index:uint128
+    creation_fee:Coins
+    jetton_vesting_code:Cell
+= FactoryStorage;
+
+jetton_vesting_storage#_
+    factory_address:MsgAddress
+    index:uint128
+    owner_address:MsgAddress
+    jetton_minter_address:MsgAddress
+    content:(Maybe ^Cell)
+    _:^[
+        jetton_wallet_address:MsgAddress
+        factory_jetton_wallet:MsgAddress
+        locked_jettons:Coins  // amount of locked jettons
+        jettons_locked:Bool  // were jettons locked?
+        claimed_times:uint16
+        claimed_jettons:Coins
+        first_unlock_time:uint32
+        first_unlock_size:uint32
+        cycle_length:uint32
+        cycles_number:uint16
+    ]
+= JettonVestingStorage;
+
+// =======================================================================
+
+// Jetton Vesting initialization:
+
+// 1.
+// To block tokens, the user must send them to the Factory address,
+// attaching at least `creation_fee` + `gas::create_vesting` TON
+// with the following Payload:
+lock_jettons_user_payload#_
+    jetton_minter_address:MsgAddress
+    jettons_owner_address:MsgAddress
+    first_unlock_time:uint32
+    first_unlock_size:uint32
+    cycle_length:uint32
+    cycles_number:uint16
+    content:(Maybe ^Cell)
+= LockJettonsUserPayload;
+
+// A message that arrives at the Factory address:
+lock_jettons_user_request$_ _:(JettonTransferNotificationMsg LockJettonsUserPayload) = InternalMsgBody;
+
+// 2.
+// Further, if the check is successful, Factory reserves `creation_fee` TON on its balance
+// and deploys the Jetton Vesting contract with the following data:
+vesting_sbt_init_data#_
+    factory_address:MsgAddress
+    sbt_item_index:uint128
+= VestingSbtInitData;
+
+vesting_sbt_init_message#d80dee82
+    query_id:uint64
+    owner_address:MsgAddress
+    jetton_minter_address:MsgAddress
+    factory_jetton_wallet:MsgAddress
+    locked_jettons:Coins
+    content:(Maybe ^Cell)
+    _:^[
+        first_unlock_time:uint32
+        first_unlock_size:uint32
+        cycle_length:uint32
+        cycles_number:uint16
+    ]
+= InternalMsgBody;
+// Along with the successful sending of the message, the next_item_index value is increased on the Factory contract.
+// If an error occurs, Factory attempts to return the tokens to the sender
+
+// 3.
+// During a deployment on a Jetton Vesting contract, it is checked that the message has come from Factory,
+// and if successful, a transaction is sent to the `jetton_minter_address` specified by Factory
+// to get the `jetton_wallet_address`:
+request_address_message#_ _:ProvideWalletMsg = InternalMsgBody;
+
+// In reply comes a message from a minter:
+report_address_message#_ _:TakeWalletMsg = InternalMsgBody;
+
+// 4.
+// After receiving TakeWalletMsg, it is checked on the Jetton Vesting contract that the sender is correct,
+// the contract has been initialised with Factory (`init` == true), and `jetton_wallet_address`
+// has not yet been set (== null). If the check is successful, the received `jetton_wallet_address` is set,
+// and a Jetton Vesting initialisation completion message is sent to the Factory address with the following Payload:
+confirm_initialization_message#e9bfea7f
+    query_id:uint64
+    item_index:uint128
+    factory_jetton_wallet:MsgAddress
+    jettons_to_lock:Coins  // == storage::locked_jettons
+    sbt_owner_address:MsgAddress
+= InternalMsgBody;
+
+// 5.
+// After receiving the Jetton Vesting initialisation confirmation message,
+// the Factory contract checks that the message came from the correct sender, and if successful,
+// non-Payload tokens are sent to the Jetton Vesting contract, with `forward_ton_amount` = `gas::complete_lock`
+lock_jettons_message#_ _:(JettonTransferMsg Null) = InternalMsgBody;
+
+// 6.
+// Upon receipt of the transfer notification, Jetton Vesting checks on the contract
+//   1) matching sender JettonTransferNotificationMsg (sender == jetton_wallet_address)
+//   2) matching token sender (from_address == factory_address)
+// If successful it sets `jettons_locked` = true and sends excesses:
+excesses_message#d53276db query_id:uint64 = InternalMsgBody;
+// Otherwise, an attempt is made to return the tokens to the sender
+returned_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;
+
+// =======================================================================
+
+// Owner's interaction with Jetton Vesting:
+
+// During all of the following transactions, a check is performed on the Jetton Vesting contract to ensure
+// that messages have been sent by the contract owner and Jetton Vesting initialisation is complete
+// (`init` == true, `jetton_wallet_address` != null())
+
+// 1.
+// The owner can claim tokens from the smart contract when it is time to unlock them.
+// To do so, he must send the following message:
+claim_message#a769de27 query_id:uint64 = InternalMsgBody;
+
+// After it is received, it is checked that the number of TONs received >= `gas::send_jettons`,
+// and the number of tokens unlocked > 0. If the check is successful, unlocked tokens are sent to the user,
+// and the contract is set to:
+//   1) `claimed_times` = `total_unlocks` (number of vesting cycles completed + 1 initial unlocking)
+//   2) `claimed_jettons` = `claimed_jettons` + available_jettons
+// If `claimed_times` == `cycles_number` + 1, then instead of `owner_address` sets `addr_none`,
+// and along with the unlocked tokens, the entire contract balance is sent.
+claimed_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;
+
+// 2.
+// The owner can burn tokens that are on a vesting contract whether they are unlocked or not.
+// To do so, he must send a message:
+burn_jettons_request_message#6c24f413
+    query_id:uint64
+    jettons_to_burn:Coins
+= InternalMsgBody;
+
+// After receiving this message, it is checked that the number of TONs received >= `gas::burn_jettons`,
+// and the number of tokens on the contract is not less than `jetton_to_burn`.
+// If the check is successful, a message is sent to burn the jettons:
+burn_jettons_message#_ _:JettonBurnMsg = InternalMsgBody;
+// In addition to this, the contract details are being changed:
+//   1) If `jettons_to_burn` == `max_jettons_to_burn`,then `owner_address` := `addr_none`
+//   2) If `jettons_to_burn` < `max_jettons_to_burn`, then
+//     - `claimed_jettons` := `claimed_jettons` * (`locked_jettons` - `jettons_to_burn`) / `locked_jettons`
+//     - `locked_jettons` := `locked_jettons` - `jettons_to_burn`
+
+// 3.
+// The owner can withdraw tokens sent to a contract by mistake by sending a message to do so:
+withdraw_jettons_message#11c09682
+    query_id:uint64
+    requested_wallet_address:MsgAddress
+    jetton_amount:Coins
+= InternalMsgBody;
+
+// After this message, it is checked that `requested_wallet_address` != `jetton_wallet_address`,
+// In case of successful verification, tokens are sent to the owner:
+withdrawed_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;

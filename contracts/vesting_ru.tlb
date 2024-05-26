@@ -88,23 +88,21 @@ factory_storage#_
 jetton_vesting_storage#_
     factory_address:MsgAddress
     index:uint128
-    _:(Optional [
-        owner_address:MsgAddress
-        jetton_minter_address:MsgAddress
-        content:(Maybe ^Cell)
-        _:^[
-            jetton_wallet_address:MsgAddress
-            factory_jetton_wallet:MsgAddress
-            locked_jettons:Coins  // amount of locked jettons
-            jettons_locked:Bool  // were jettons locked?
-            claimed_times:uint16
-            claimed_jettons:Coins
-            first_unlock_time:uint32
-            first_unlock_size:uint32
-            cycle_length:uint32
-            cycles_number:uint16
-        ]
-    ])
+    owner_address:MsgAddress
+    jetton_minter_address:MsgAddress
+    content:(Maybe ^Cell)
+    _:^[
+        jetton_wallet_address:MsgAddress
+        factory_jetton_wallet:MsgAddress
+        locked_jettons:Coins  // amount of locked jettons
+        jettons_locked:Bool  // were jettons locked?
+        claimed_times:uint16
+        claimed_jettons:Coins
+        first_unlock_time:uint32
+        first_unlock_size:uint32
+        cycle_length:uint32
+        cycles_number:uint16
+    ]
 = JettonVestingStorage;
 
 // =======================================================================
@@ -151,11 +149,11 @@ vesting_sbt_init_message#d80dee82
     ]
 = InternalMsgBody;
 // Вместе с успешной отправкой сообщения, на контракте Factory увеличивается значение next_item_index.
-// Если произошла какая-то ошибка, то Factory совершает попытку возврата жетонов отправителюю
+// Если произошла какая-то ошибка, то Factory совершает попытку возврата жетонов отправителю
 
 // 3.
 // Во время деплоя на контракте Jetton Vesting проверяется, что сообщение пришло от Factory,
-// и в случае успешной покупки, для получение `jetton_wallet_address` отправляется транзакция
+// и в случае успешной покупки, для получения `jetton_wallet_address` отправляется транзакция
 // на адрес `jetton_minter_address`, указанный Factory:
 request_address_message#_ _:ProvideWalletMsg = InternalMsgBody;
 
@@ -222,7 +220,7 @@ burn_jettons_request_message#6c24f413
 
 // После получения этого сообщения проверяется, что количество полученных TON >= `gas::burn_jettons`,
 // и количество жетонов на контракте не меньше `jetton_to_burn`.
-// В случае успешной проверкиПосле этого отправляется сообщение для сжигания сжетонов:
+// В случае успешной проверки отправляется сообщение для сжигания жетонов:
 burn_jettons_message#_ _:JettonBurnMsg = InternalMsgBody;
 // Кроме этого, меняются данные контракта:
 //  1) Если `jettons_to_burn` == `max_jettons_to_burn`, то `owner_address` := `addr_none`
@@ -238,6 +236,6 @@ withdraw_jettons_message#11c09682
     jetton_amount:Coins
 = InternalMsgBody;
 
-// После этого сообщения проверяется, что `requested_wallet_address` != `jetton_wallet_address`,
+// После этого сообщения проверяется, что `requested_wallet_address` != `jetton_wallet_address` || now() > last_unlock,
 // В случае успешный проверки, владельцу отправляются жетоны:
 withdrawed_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;
