@@ -17,7 +17,7 @@ export function buildOnchainMetadata(data: any): Cell {
     );
     Object.entries(data).forEach(([key, value]) => {
         if (typeof(value) === "number") {
-            dict.set(toKey(key), beginCell().storeUint(value,8).endCell());
+            dict.set(toKey(key), beginCell().storeUint(0, 8).storeUint(value,8).endCell());
         }
         else {
             dict.set(toKey(key), beginCell().storeUint(0,8).storeStringTail(value as string).endCell());

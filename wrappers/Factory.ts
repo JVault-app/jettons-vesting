@@ -1,10 +1,15 @@
 import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
 import { Maybe } from '@ton/core/dist/utils/maybe';
+import { toNano } from '@ton/core';
+import { OpCodes } from './helpers/constants';
+
 
 export type FactoryConfig = {
     admin_address: Address;
+    start_index: bigint;
     creation_fee: bigint;
     jetton_vesting_code: Cell;
+    content: Maybe<Cell>;
 };
 
 export type DeployVestingMessage = {
@@ -20,9 +25,10 @@ export type DeployVestingMessage = {
 export function factoryConfigToCell(config: FactoryConfig): Cell {
     return beginCell()
         .storeAddress(config.admin_address)
-        .storeUint(0, 128)
+        .storeUint(config.start_index, 128)
         .storeCoins(config.creation_fee)
         .storeRef(config.jetton_vesting_code)
+        .storeMaybeRef(config.content)
     .endCell();
 }
 
@@ -47,6 +53,22 @@ export class Factory implements Contract {
         });
     }
 
+    async sendChangeCreationFee(provider: ContractProvider, via: Sender, new_creation_fee: bigint) {
+        await provider.internal(via, {
+            value: toNano("0.01"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.changeCreationFee, 32).storeUint(0, 64).storeCoins(new_creation_fee).endCell(),
+        });
+    }
+
+    async sendWithdrawTon(provider: ContractProvider, via: Sender) {
+        await provider.internal(via, {
+            value: toNano("0.01"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.withdrawTon, 32).storeUint(0, 64).endCell(),
+        });
+    }
+
     static createDeployVestingPayload(args: DeployVestingMessage) {
         return  beginCell()
                     .storeAddress(args.jettonMinter)
@@ -54,7 +76,7 @@ export class Factory implements Contract {
                     .storeUint(args.firstUnlockTime, 32)
                     .storeUint(args.firstUnlockSize, 32)
                     .storeUint(args.cycleLength, 32)
-                    .storeUint(args.cyclesNumber, 16)
+                    .storeUint(args.cyclesNumber, 32)
                     .storeMaybeRef(args.content)
                 .endCell()
     }

@@ -21,7 +21,7 @@ global int   storage::claimed_jettons;       ;; total amount of withdrawed jetto
 global int   storage::first_unlock_time;     ;; timestamp of the first unlock (uint32)
 global int   storage::first_unlock_size;     ;; size of the first unlock in percents (uint32)
 global int   storage::cycle_length;          ;; time between unlocks in seconds (uint32)
-global int   storage::cycles_number;         ;; number of unlocks excluding initial (ubool6)
+global int   storage::cycles_number;         ;; number of unlocks excluding initial (uint32)
 
 
 () load_data() impure inline {
@@ -37,17 +37,17 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         storage::jetton_minter_address = ds~load_msg_addr();
         storage::content               = ds~load_maybe_ref();
 
-        slice internal_ds = ds~load_ref().begin_parse();  ;; 267 + 267 + 124 + 1 + 16 + 124 + 32 + 32 + 32 + 16 = 911; refs = 0;
+        slice internal_ds = ds~load_ref().begin_parse();  ;; 267 + 267 + 124 + 1 + 16 + 124 + 32 + 32 + 32 + 32 = 927; refs = 0;
         storage::jetton_wallet_address = internal_ds~load_msg_addr();
         storage::factory_jetton_wallet = internal_ds~load_msg_addr();
         storage::locked_jettons        = internal_ds~load_coins();
         storage::jettons_locked?       = internal_ds~load_int(1);
-        storage::claimed_times         = internal_ds~load_uint(16);
+        storage::claimed_times         = internal_ds~load_uint(32);
         storage::claimed_jettons       = internal_ds~load_coins();
         storage::first_unlock_time     = internal_ds~load_uint(32);
         storage::first_unlock_size     = internal_ds~load_uint(32);
         storage::cycle_length          = internal_ds~load_uint(32);
-        storage::cycles_number         = internal_ds~load_uint(16);
+        storage::cycles_number         = internal_ds~load_uint(32);
 
         internal_ds.end_parse();
     }
@@ -70,12 +70,12 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                         .store_slice(storage::factory_jetton_wallet)
                         .store_coins(storage::locked_jettons)
                         .store_int(storage::jettons_locked?, 1)
-                        .store_uint(storage::claimed_times, 16)
+                        .store_uint(storage::claimed_times, 32)
                         .store_coins(storage::claimed_jettons)
                         .store_uint(storage::first_unlock_time, 32)
                         .store_uint(storage::first_unlock_size, 32)
                         .store_uint(storage::cycle_length, 32)
-                        .store_uint(storage::cycles_number, 16)
+                        .store_uint(storage::cycles_number, 32)
                     .end_cell()
                 )
             .end_cell()
@@ -123,7 +123,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         storage::first_unlock_time     = in_msg_body~load_uint(32);
         storage::first_unlock_size     = in_msg_body~load_uint(32);
         storage::cycle_length          = in_msg_body~load_uint(32);
-        storage::cycles_number         = in_msg_body~load_uint(16);
+        storage::cycles_number         = in_msg_body~load_uint(32);
 
         builder msg_body = begin_cell()
                             .store_uint(op::provide_wallet_address, 32)
@@ -172,7 +172,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 
             storage::jettons_locked? = true;
             storage::locked_jettons = jetton_amount;
-            send_builder_message(storage::owner_address,0, begin_cell().store_uint(op::ownership_assigned_nft, 32).store_uint(query_id, 64).store_uint(0, 3),mode::carry_remaining_gas);
+            send_builder_message(storage::owner_address, 0, begin_cell().store_uint(op::ownership_assigned_nft, 32).store_uint(query_id, 64).store_uint(0, 3),mode::carry_remaining_gas);
             save_data();
         }
         catch (_, n) {
@@ -188,8 +188,8 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         throw_unless(exc::not_unlocked_yet, now() > storage::first_unlock_time);
         throw_unless(exc::not_enough_ton, msg_value >= gas::send_jettons);
         
-        int total_unlocks = min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
-        int available_percent = storage::first_unlock_size + muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number);
+        int total_unlocks = storage::cycles_number ? min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length) : 0;
+        int available_percent = storage::first_unlock_size + (storage::cycles_number ? muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number) : 0);
         int available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider) - storage::claimed_jettons;
         int sending_mode = mode::carry_remaining_gas;
         if (total_unlocks == storage::cycles_number) {
@@ -320,9 +320,14 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             burned = true;
         }
         elseif (now() > storage::first_unlock_time) {
-            int total_unlocks = min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
-            int available_percent = storage::first_unlock_size + muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number);
-            available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider) - storage::claimed_jettons;
+            if (storage::cycles_number) {
+                int total_unlocks = min(storage::cycles_number, (now() - storage::first_unlock_time) / storage::cycle_length);
+                int available_percent = storage::first_unlock_size + muldiv(total_unlocks, percent_devider - storage::first_unlock_size, storage::cycles_number);
+                available_jettons = muldiv(storage::locked_jettons, available_percent, percent_devider) - storage::claimed_jettons;
+            }
+            else {
+                available_jettons = storage::locked_jettons;
+            }
         }
         slice content_cs = storage::content.begin_parse();
         cell dict_content = content_cs~load_ref();
@@ -331,6 +336,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         decimals_slice = decimals_slice~load_ref().begin_parse();
         int decimals = 9;
         if (success) {
+            decimals_slice~skip_bits(8);
             decimals = decimals_slice~load_uint(8);
         }
         int one_jetton = 1;
@@ -346,7 +352,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
             symbol~skip_bits(8);
         }
 
-        builder sbt_name = begin_cell().store_uint(0,8).store_str_jettons(storage::locked_jettons, one_jetton, symbol).store_slice(" locked on JVault.app");
+        builder sbt_name = begin_cell().store_uint(0,8).store_str_jettons(storage::locked_jettons, one_jetton, symbol).store_slice(" locked on JVault.xyz");
         if (burned) {
             sbt_name = sbt_name.store_slice(" (burned)");
         }
@@ -386,12 +392,18 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         }
         sbt_descriprion = sbt_descriprion.store_ref(description_inner_cell.end_cell());
 
+        (slice uri, success) = dict_content.udict_get?(256, "uri"H);
+        if (success) {
+            uri = uri~load_ref().begin_parse();
+            dict_content~udict_set(256, "uri"H, begin_cell().store_ref(begin_cell().store_slice(uri).store_number10(storage::index).end_cell()).end_cell().begin_parse());
+        }
         dict_content~udict_set(256, "name"H, begin_cell().store_ref(sbt_name.end_cell()).end_cell().begin_parse());
         dict_content~udict_set(256, "description"H, begin_cell().store_ref(sbt_descriprion.end_cell()).end_cell().begin_parse());
-        return (storage::init?, 0, null_addr(), storage::owner_address, begin_cell().store_uint(0, 8).store_dict(dict_content).end_cell());
+        
+        return (storage::init?, storage::index, storage::factory_address, storage::owner_address, begin_cell().store_uint(0, 8).store_dict(dict_content).end_cell());
     }
         
-    return (storage::init?, 0, null_addr(), storage::owner_address, storage::content);
+    return (storage::init?, storage::index, storage::factory_address, storage::owner_address, storage::content);
 }
 
 slice get_authority_address() method_id {

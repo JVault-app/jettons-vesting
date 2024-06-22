@@ -45,14 +45,14 @@ describe('JettonVesting', () => {
         ownerJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(owner.address)))
         adminJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(admin.address)))
 
-        factory = blockchain.openContract(Factory.createFromConfig({admin_address: admin.address, jetton_vesting_code: vestingCode, creation_fee: toNano("0.1")}, factoryCode));
+        factory = blockchain.openContract(Factory.createFromConfig({admin_address: admin.address, start_index: 0n, jetton_vesting_code: vestingCode, creation_fee: toNano("0.1"), content: null}, factoryCode));
         await factory.sendDeploy(admin.getSender(), toNano("0.03"))
         vesting = blockchain.openContract(JettonVesting.createFromAddress(await factory.getNftAddressByIndex(0n)))
 
         factoryJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(factory.address)))
         vestingJetton = blockchain.openContract(JettonWallet.createFromAddress(await jettonMinter.getWalletAddress(vesting.address)))
 
-        await ownerJetton.sendTransfer(owner.getSender(), toNano("2"), toNano(1000), factory.address, owner.address, null, toNano(1), Factory.createDeployVestingPayload({jettonMinter: jettonMinter.address, jettonsOwner: owner.address, firstUnlockTime: blockchain.now!! + 1000, firstUnlockSize: 10000000, cycleLength: 100, cyclesNumber: 9, content: buildOnchainMetadata({decimals: 9, symbol: "boba", image: "https://media.tenor.com/4cTJ4sDdIn0AAAAe/aboba.png"})}))
+        await ownerJetton.sendTransfer(owner.getSender(), toNano("2"), toNano(1000), factory.address, owner.address, null, toNano(1), Factory.createDeployVestingPayload({jettonMinter: jettonMinter.address, jettonsOwner: owner.address, firstUnlockTime: blockchain.now!! + 1000, firstUnlockSize: 10000000, cycleLength: 100, cyclesNumber: 9, content: buildOnchainMetadata({decimals: 9, symbol: "boba", image: "https://media.tenor.com/4cTJ4sDdIn0AAAAe/aboba.png", uri: "https://jvault.xyz/"})}))
         expect((await vesting.getStorage() as JettonVestingConfigInited).jettonWalletAddress).toEqualAddress(vestingJetton.address)
         expect(await vestingJetton.getJettonBalance()).toEqual(toNano(1000))
         expect((await vesting.getStorage() as JettonVestingConfigInited).jettonsLocked).toBeTruthy()
