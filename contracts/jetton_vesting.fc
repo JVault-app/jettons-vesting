@@ -361,10 +361,10 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
                                 .store_uint(0, 8)  ;; snake format prefix
                                 .store_slice("Initially locked: ")
                                 .store_str_jettons(storage::locked_jettons, one_jetton, symbol)
-                                .store_uint(10, 8)  ;; store '\n' (newline)
-                                .store_slice("Withdrawed: ")
-                                .store_str_jettons(storage::claimed_jettons, one_jetton, symbol)
                                 .store_uint(10, 8);  ;; store '\n' (newline)
+                                ;; .store_slice("Withdrawed: ")
+                                ;; .store_str_jettons(storage::claimed_jettons, one_jetton, symbol)
+                                ;; .store_uint(10, 8);  ;; store '\n' (newline)
 
         builder description_inner_cell = begin_cell()
                                             ;; .store_slice("Available to withdraw: ")
