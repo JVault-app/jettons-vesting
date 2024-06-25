@@ -82,7 +82,8 @@ factory_storage#_
     admin_address:MsgAddress
     next_item_index:uint128
     creation_fee:Coins
-    jetton_vesting_code:Cell
+    jetton_vesting_code:^Cell
+    content:(Maybe ^Cell)
 = FactoryStorage;
 
 jetton_vesting_storage#_
@@ -96,12 +97,12 @@ jetton_vesting_storage#_
         factory_jetton_wallet:MsgAddress
         locked_jettons:Coins  // amount of locked jettons
         jettons_locked:Bool  // were jettons locked?
-        claimed_times:uint16
+        claimed_times:uint32
         claimed_jettons:Coins
         first_unlock_time:uint32
         first_unlock_size:uint32
         cycle_length:uint32
-        cycles_number:uint16
+        cycles_number:uint32
     ]
 = JettonVestingStorage;
 
@@ -110,7 +111,7 @@ jetton_vesting_storage#_
 // Jetton Vesting initialization:
 
 // 1.
-// To block tokens, the user must send them to the Factory address,
+// To lock tokens, the user must send them to the Factory address,
 // attaching at least `creation_fee` + `gas::create_vesting` TON
 // with the following Payload:
 lock_jettons_user_payload#_
@@ -119,7 +120,7 @@ lock_jettons_user_payload#_
     first_unlock_time:uint32
     first_unlock_size:uint32
     cycle_length:uint32
-    cycles_number:uint16
+    cycles_number:uint32
     content:(Maybe ^Cell)
 = LockJettonsUserPayload;
 
@@ -145,7 +146,7 @@ vesting_sbt_init_message#d80dee82
         first_unlock_time:uint32
         first_unlock_size:uint32
         cycle_length:uint32
-        cycles_number:uint16
+        cycles_number:uint32
     ]
 = InternalMsgBody;
 // Along with the successful sending of the message, the next_item_index value is increased on the Factory contract.
@@ -236,6 +237,6 @@ withdraw_jettons_message#11c09682
     jetton_amount:Coins
 = InternalMsgBody;
 
-// After this message, it is checked that `requested_wallet_address` != `jetton_wallet_address`,
+// After this message, it is checked that `requested_wallet_address` != `jetton_wallet_address` or now() > last_unlock_time,
 // In case of successful verification, tokens are sent to the owner:
 withdrawed_jettons_message#_ _:(JettonTransferMsg bits) = InternalMsgBody;

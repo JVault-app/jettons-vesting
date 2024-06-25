@@ -11,7 +11,7 @@ global cell  storage::collection_content;
 
 
 () load_data() impure inline {
-    slice ds = get_data().begin_parse();  ;; 267 + 128 + 124
+    slice ds = get_data().begin_parse();  ;; bits = 267 + 128 + 124 + 1 = 520; refs = 2;
 
     storage::admin_address       = ds~load_msg_addr();
     storage::next_item_index     = ds~load_uint(128);
@@ -142,16 +142,6 @@ global cell  storage::collection_content;
         save_data();
         return ();
     }
-    ;; if (op == 0xfffe) {  ;; set data
-    ;;     set_data(in_msg_body~load_ref());
-    ;;     send_message_with_comment(storage::owner_address, 0, "Sale admin data was changed", mode::carry_remaining_gas);
-    ;;     return ();
-    ;; }
-    ;; if (op == 0xffff) {  ;; set code
-    ;;     send_message_with_comment(storage::owner_address, 0, "Sale admin code was changed", mode::carry_remaining_gas);
-    ;;     set_code(in_msg_body~load_ref());
-    ;;     return ();
-    ;; }
 }
 
 
