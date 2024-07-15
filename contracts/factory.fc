@@ -100,7 +100,7 @@ global cell  storage::collection_content;
         }
     }
 
-    if (op == op::confitm_initialization) {
+    if ((op == op::confirm_initialization) | (op == op::decline_initialization)) {
         int item_index = in_msg_body~load_uint(128);
         slice expected_address = get_address_by_state_init(calculate_nft_item_state_init(item_index, storage::jetton_vesting_code, my_address(), 128));
         throw_unless(exc::incorrect_sender, equal_slices(expected_address, sender_address));
@@ -108,12 +108,18 @@ global cell  storage::collection_content;
         slice jetton_wallet_address = in_msg_body~load_msg_addr();
         int   jettons_to_lock       = in_msg_body~load_coins();
         slice vesting_owner_address = in_msg_body~load_msg_addr();
-
-        send_jettons(query_id, jettons_to_lock, sender_address, vesting_owner_address, jetton_wallet_address, 0, 
-                     mode::carry_remaining_gas, gas::complete_lock, null());
+        
+        if (op == op::confirm_initialization) {
+            send_jettons(query_id, jettons_to_lock, sender_address, vesting_owner_address, jetton_wallet_address,
+                         0, mode::carry_remaining_gas, gas::complete_lock, null());
+        }
+        else {
+            send_jettons(query_id, jettons_to_lock, vesting_owner_address, vesting_owner_address, jetton_wallet_address,
+                         storage::creation_fee, mode::carry_remaining_gas, 1, begin_cell().store_uint(0, 32).store_slice("Jetton doesn't support TEP-89").end_cell());
+        }
         return ();
     }
-
+    
     ;; Admin commands
     throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::admin_address));
     

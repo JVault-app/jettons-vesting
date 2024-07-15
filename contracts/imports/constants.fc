@@ -37,7 +37,8 @@ const int op::get_royalty_params      = 0x693d3950;
 const int op::report_royalty_params   = 0xa8cb00ad;
 const int op::claim                   = 0xa769de27;
 const int op::burn_locked_jettons     = 0x6c24f413;
-const int op::confitm_initialization  = 0xe9bfea7f;
+const int op::confirm_initialization  = 0xe9bfea7f;
+const int op::decline_initialization  = 0xd07a1886;
 const int op::ownership_assigned_nft  = 0x05138d91;
 
 

@@ -94,10 +94,25 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
     load_data();
     if (flags & 1) { ;; route all prove_ownership bounced messages to owner
         ;; first op was 0xffffffff, because of bounced, now we need to read real one
+        in_msg_body~skip_bits(32);
         int op = in_msg_body~load_uint(32);
+
         if (op == op::ownership_proof) {
             int query_id = in_msg_body~load_uint(64);
             send_builder_message(storage::owner_address, 0, begin_cell().store_uint(op::ownership_proof_bounced, 32).store_uint(query_id, 64), mode::carry_remaining_gas);
+        }
+
+        if (op == op::provide_wallet_address) {  ;; jetton isn't discoverable, should be returned to owner
+            int query_id = in_msg_body~load_uint(64);
+            cell msg_body = begin_cell()
+                                .store_uint(op::decline_initialization, 32)
+                                .store_uint(query_id, 64)
+                                .store_uint(storage::index, 128)
+                                .store_slice(storage::factory_jetton_wallet)
+                                .store_coins(storage::locked_jettons)
+                                .store_slice(storage::owner_address)
+                            .end_cell();
+            send_cell_message(storage::factory_address, 0, msg_body, 128);
         }
         return ();
     }
@@ -146,7 +161,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         storage::jetton_wallet_address = in_msg_body~load_msg_addr();
 
         builder msg_body = begin_cell()
-                            .store_uint(op::confitm_initialization, 32)
+                            .store_uint(op::confirm_initialization, 32)
                             .store_uint(query_id, 64)
                             .store_uint(storage::index, 128)
                             .store_slice(storage::factory_jetton_wallet)
@@ -172,7 +187,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 
             storage::jettons_locked? = true;
             storage::locked_jettons = jetton_amount;
-            send_builder_message(storage::owner_address, 0, begin_cell().store_uint(op::ownership_assigned_nft, 32).store_uint(query_id, 64).store_uint(0, 3),mode::carry_remaining_gas);
+            send_builder_message(storage::owner_address, 0, begin_cell().store_uint(op::ownership_assigned_nft, 32).store_uint(query_id, 64).store_uint(0, 3), mode::carry_remaining_gas);
             save_data();
         }
         catch (_, n) {

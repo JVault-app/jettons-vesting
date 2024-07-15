@@ -32,7 +32,7 @@ export type JettonVestingInitBody = {
     index: bigint;
     ownerAddress: Address;
     jettonMinterAddress: Address;
-    jettonWalletAddress: Address;
+    jettonWalletAddress: Address | null;
     content: Maybe<Cell>;
     factoryJettonWallet: Address;
     lockedJettons: bigint;  // amount of locked jettons
@@ -159,7 +159,7 @@ export class JettonVesting implements Contract {
                 index: stack.readBigNumber(),
                 ownerAddress: stack.readAddress(),
                 jettonMinterAddress: stack.readAddress(),
-                jettonWalletAddress: stack.readAddress(),
+                jettonWalletAddress: stack.readAddressOpt(),
                 content: stack.readCellOpt(),
                 factoryJettonWallet: stack.readAddress(),
                 lockedJettons: stack.readBigNumber(),
