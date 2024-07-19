@@ -45,10 +45,12 @@ describe('JettonVesting', () => {
         owner = await blockchain.treasury("owner")
 
         let vestingCodesDict = Dictionary.empty(Dictionary.Keys.BigInt(128), sliceDictValueParser());
-        vestingCodesDict.set(0n, beginCell().storeMaybeRef(vestingCode).endCell().beginParse());
+        vestingCodesDict.set(0n, beginCell().storeMaybeRef(beginCell().storeUint(1231, 123).endCell()).endCell().beginParse());
         
-        factory = blockchain.openContract(Factory.createFromConfig({admin_address: admin.address, start_index: 0n, jetton_vesting_codes: vestingCodesDict, creation_fee: toNano("0.1"), content: null}, factoryCode));
-        await factory.sendDeploy(admin.getSender(), toNano("0.03"))
+        factory = blockchain.openContract(Factory.createFromConfig({admin_address: admin.address, start_index: 0n, jetton_vesting_codes: vestingCodesDict, creation_fee: toNano("0.1"), content: null, version: 0}, factoryCode));
+        await factory.sendDeploy(admin.getSender(), toNano("0.03")); 
+        await factory.sendUpdateVestingCode(admin.getSender(), vestingCode);
+
         vesting = blockchain.openContract(JettonVesting.createFromAddress(await factory.getNftAddressByIndex(0n)))
 
         jettonMinter = blockchain.openContract(JettonMinter.createFromConfig({admin: admin.address, wallet_code: jettonWalletCode, content: Cell.EMPTY}, jettonCode))

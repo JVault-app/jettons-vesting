@@ -8,6 +8,7 @@ global int   storage::next_item_index;
 global int   storage::creation_fee;
 global cell  storage::jetton_vesting_codes;
 global cell  storage::collection_content;
+global int   storage::version;
 
 
 () load_data() impure inline {
@@ -18,6 +19,7 @@ global cell  storage::collection_content;
     storage::creation_fee         = ds~load_coins();
     storage::jetton_vesting_codes = ds~load_dict();
     storage::collection_content   = ds~load_dict();
+    storage::version              = ds~load_uint(8);
 }
 
 () save_data() impure inline {
@@ -28,6 +30,7 @@ global cell  storage::collection_content;
             .store_coins(storage::creation_fee)
             .store_dict(storage::jetton_vesting_codes)
             .store_dict(storage::collection_content)
+            .store_uint(storage::version, 8)
         .end_cell()
     );
 }
@@ -128,8 +131,7 @@ global cell  storage::collection_content;
     throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::admin_address));
     
     if (op == op::update_vesting_code) {
-        slice jetton_vesting_code = in_msg_body~load_ref().begin_parse();
-        storage::jetton_vesting_codes~udict_set(128, storage::next_item_index, jetton_vesting_code);
+        storage::jetton_vesting_codes~udict_set(128, storage::next_item_index, in_msg_body);
         
         save_data();
         return ();
@@ -194,12 +196,13 @@ slice get_nft_address_by_index(int index) method_id {
 }
 
 
-(slice, int, int, cell) get_storage_data() method_id {
+(slice, int, int, cell, int) get_storage_data() method_id {
     load_data();
     return (
         storage::admin_address,
         storage::next_item_index,
         storage::creation_fee,
-        storage::jetton_vesting_codes
+        storage::jetton_vesting_codes,
+        storage::version
     );
 }

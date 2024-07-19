@@ -19,6 +19,7 @@ export const OpCodes = {
     createLock: 0x62e0667,
     changeCreationFee: 0x610240f1,
     changeSbtCode: 0xb97d7c00,
+    updateVestingCode: 0xdf4f17cb,
   
     // SBT
     initialize: 0xd80dee82,

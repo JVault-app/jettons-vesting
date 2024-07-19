@@ -10,6 +10,7 @@ export type FactoryConfig = {
     creation_fee: bigint;
     jetton_vesting_codes: Dictionary<bigint, Slice>;
     content: Maybe<Cell>;
+    version: number;
 };
 
 export type DeployVestingMessage = {
@@ -40,6 +41,7 @@ export function factoryConfigToCell(config: FactoryConfig): Cell {
         .storeCoins(config.creation_fee)
         .storeDict(config.jetton_vesting_codes, Dictionary.Keys.BigUint(128), sliceDictValueParser())
         .storeMaybeRef(config.content)
+        .storeUint(config.version, 8)
     .endCell();
 }
 
@@ -61,6 +63,14 @@ export class Factory implements Contract {
             value,
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().endCell(),
+        });
+    }
+
+    async sendUpdateVestingCode(provider: ContractProvider, via: Sender, new_code: Cell) {
+        await provider.internal(via, {
+            value: toNano("0.01"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.updateVestingCode, 32).storeUint(0, 64).storeMaybeRef(new_code).endCell(),
         });
     }
 
