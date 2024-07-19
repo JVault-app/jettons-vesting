@@ -6,10 +6,10 @@ import { buildOnchainMetadata } from '../wrappers/buildOnchain';
 export async function run(provider: NetworkProvider) {
     const factory = provider.open(Factory.createFromConfig({
         admin_address: provider.sender().address!!,
-        start_index: 0n,
-        creation_fee: toNano('0.001'),
+        start_index: 204n,
+        creation_fee: toNano('0.5'),
         jetton_vesting_code: await compile('JettonVesting'),
-        content: buildOnchainMetadata({name: "JVault locks", description: "Collection with soulbound tokens confirming ownership of jettons locked in JVault Locker", image: "https://jvault.xyz/static/images/lock_collection.png"})
+        content: buildOnchainMetadata({name: "JVault locks", description: "Collection with soulbound tokens confirming ownership of jettons locked in JVault Locker (updated version)", image: "https://jvault.xyz/static/images/lock_collection.png"})
     }, await compile('Factory')));
 
     await factory.sendDeploy(provider.sender(), toNano('0.05'));

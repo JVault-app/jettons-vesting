@@ -250,7 +250,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
         slice requested_wallet_address = in_msg_body~load_msg_addr();
 
         if (now() < storage::first_unlock_time + storage::cycles_number * storage::cycle_length) {
-            throw_if(exc::incorrect_jetton, equal_slices(requested_wallet_address, storage::jetton_wallet_address));
+            throw_if(exc::incorrect_jetton, (requested_wallet_address.slice_bits() != 267) | equal_slices(requested_wallet_address, storage::jetton_wallet_address));
         }
 
         int jetton_amount = in_msg_body~load_coins();

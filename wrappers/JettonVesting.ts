@@ -114,12 +114,21 @@ export class JettonVesting implements Contract {
         })
     }
 
-    async sendWithdrawJetton(provider: ContractProvider, via: Sender, value: bigint, jettonWallet: Address, jettonAmount: bigint, queryId? : Maybe<number | bigint>) {
-        await provider.internal(via, {
-            value,
-            sendMode: SendMode.PAY_GAS_SEPARATELY,
-            body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(queryId ?? 0, 64).storeAddress(jettonWallet).storeCoins(jettonAmount).endCell()
-        })
+    async sendWithdrawJetton(provider: ContractProvider, via: Sender, value: bigint, jettonWallet: Address, jettonAmount: bigint, queryId? : Maybe<number | bigint>, varAddr: boolean = false) {
+        if (!varAddr) {
+            await provider.internal(via, {
+                value,
+                sendMode: SendMode.PAY_GAS_SEPARATELY,
+                body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(queryId ?? 0, 64).storeAddress(jettonWallet).storeCoins(jettonAmount).endCell()
+            })
+        }
+        else {
+            await provider.internal(via, {
+                value,
+                sendMode: SendMode.PAY_GAS_SEPARATELY,
+                body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(queryId ?? 0, 64).storeUint(3, 2).storeBit(0).storeUint(256, 9).storeUint(jettonWallet.workChain, 32).storeBuffer(jettonWallet.hash).storeCoins(jettonAmount).endCell()
+            })
+        }
     }
 
     async sendProofOwnership(provider: ContractProvider, via: Sender, value: bigint, args: {dest: Address, forwardPayload: Cell, withContent: boolean, queryId?: number | bigint}) {

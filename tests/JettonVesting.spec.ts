@@ -86,7 +86,7 @@ describe('JettonVesting', () => {
         // blockchain.verbosity.blockchainLogs = true
         // console.log(await vesting.getH())
         let data = await vesting.getData();
-        console.log(data)
+        // console.log(data)
     })
     it('should send every cycle', async () => {
         // blockchain.verbosity.vmLogs = "vm_logs"
@@ -116,7 +116,7 @@ describe('JettonVesting', () => {
         }
     });
 
-    it('claim after end', async () => {
+    it('should claim after end', async () => {
         let conf = await vesting.getStorage() as JettonVestingConfigInited
         blockchain.now = conf.firstUnlockTime + 1 + conf.cycleLength * conf.cyclesNumber
         let res = await vesting.sendClaim(owner.getSender(), toNano("0.1"))
@@ -125,7 +125,7 @@ describe('JettonVesting', () => {
         expect(await ownerJettonWallet.getJettonBalance()).toEqual(toNano(1000))
     });
 
-    it('claim in the middle of vesting', async () => {
+    it('should claim in the middle of vesting', async () => {
         let conf = await vesting.getStorage() as JettonVestingConfigInited
         blockchain.now = conf.firstUnlockTime + 1 + conf.cycleLength * conf.cyclesNumber / 2
         let res = await vesting.sendClaim(owner.getSender(), toNano("0.1"))
@@ -134,7 +134,14 @@ describe('JettonVesting', () => {
         expect(await ownerJettonWallet.getJettonBalance()).toEqual(toNano(500))
     });
 
-    it('sends wrong jettons', async () => {
+    it('should decline withdrawal of main jetton', async () => {
+        await vesting.sendWithdrawJetton(owner.getSender(), toNano("0.1"), await jettonMinter.getWalletAddress(vesting.address), toNano(1000), 0, true);
+        await vesting.sendWithdrawJetton(owner.getSender(), toNano("0.1"), await jettonMinter.getWalletAddress(vesting.address), toNano(1000), 0, false);
+        expect(await ownerJettonWallet.getJettonBalance()).toEqual(toNano(0));
+    });
+
+
+    it('should accept withdrawal of wrong jettons', async () => {
         let jet2 = blockchain.openContract(JettonMinter.createFromConfig({admin: owner.address, content: Cell.EMPTY, wallet_code: jettonWalletCode}, jettonCode))
         await jet2.sendMint(owner.getSender(), owner.address, toNano(1000), toNano("0.2"), toNano("0.3"))
         let jet2owner = blockchain.openContract(JettonWallet.createFromAddress(await jet2.getWalletAddress(owner.address)))
