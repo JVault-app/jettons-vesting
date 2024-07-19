@@ -126,7 +126,7 @@ export class JettonVesting implements Contract {
             await provider.internal(via, {
                 value,
                 sendMode: SendMode.PAY_GAS_SEPARATELY,
-                body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(queryId ?? 0, 64).storeUint(3, 2).storeBit(0).storeUint(256, 9).storeUint(jettonWallet.workChain, 32).storeBuffer(jettonWallet.hash).storeCoins(jettonAmount).endCell()
+                body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(queryId ?? 0, 64).storeUint(3, 2).storeBit(0).storeUint(256, 9).storeUint(jettonWallet.workChain, 32).storeUint(BigInt("0x" + jettonWallet.hash.toString("hex")), 256).storeCoins(jettonAmount).endCell()
             })
         }
     }

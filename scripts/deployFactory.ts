@@ -8,7 +8,7 @@ export async function run(provider: NetworkProvider) {
         admin_address: provider.sender().address!!,
         start_index: 204n,
         creation_fee: toNano('0.5'),
-        jetton_vesting_code: await compile('JettonVesting'),
+        jetton_vesting_codes: await compile('JettonVesting'),
         content: buildOnchainMetadata({name: "JVault locks", description: "Collection with soulbound tokens confirming ownership of jettons locked in JVault Locker (updated version)", image: "https://jvault.xyz/static/images/lock_collection.png"})
     }, await compile('Factory')));
 

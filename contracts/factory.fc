@@ -6,18 +6,18 @@
 global slice storage::admin_address;
 global int   storage::next_item_index;
 global int   storage::creation_fee;
-global cell  storage::jetton_vesting_code;
+global cell  storage::jetton_vesting_codes;
 global cell  storage::collection_content;
 
 
 () load_data() impure inline {
     slice ds = get_data().begin_parse();  ;; bits = 267 + 128 + 124 + 1 = 520; refs = 2;
 
-    storage::admin_address       = ds~load_msg_addr();
-    storage::next_item_index     = ds~load_uint(128);
-    storage::creation_fee        = ds~load_coins();
-    storage::jetton_vesting_code = ds~load_ref();
-    storage::collection_content  = ds~load_dict();
+    storage::admin_address        = ds~load_msg_addr();
+    storage::next_item_index      = ds~load_uint(128);
+    storage::creation_fee         = ds~load_coins();
+    storage::jetton_vesting_codes = ds~load_dict();
+    storage::collection_content   = ds~load_dict();
 }
 
 () save_data() impure inline {
@@ -26,7 +26,7 @@ global cell  storage::collection_content;
             .store_slice(storage::admin_address)
             .store_uint(storage::next_item_index, 128)
             .store_coins(storage::creation_fee)
-            .store_ref(storage::jetton_vesting_code)
+            .store_dict(storage::jetton_vesting_codes)
             .store_dict(storage::collection_content)
         .end_cell()
     );
@@ -82,8 +82,11 @@ global cell  storage::collection_content;
                                     .end_cell()   
                                 )
                             .end_cell();
-            cell state_init = calculate_nft_item_state_init(storage::next_item_index, storage::jetton_vesting_code, my_address(), 128);
+
+            (_, slice jetton_vesting_code, _) = storage::jetton_vesting_codes.udict_get_max?(128);
+            cell state_init = calculate_nft_item_state_init(storage::next_item_index, jetton_vesting_code, my_address(), 128);
             slice jetton_vesting_address = get_address_by_state_init(state_init);
+
             send_deploy_message(jetton_vesting_address, 0, state_init, msg_body, mode::carry_remaining_balance);
             storage::next_item_index += 1;
             save_data();
@@ -102,7 +105,8 @@ global cell  storage::collection_content;
 
     if ((op == op::confirm_initialization) | (op == op::decline_initialization)) {
         int item_index = in_msg_body~load_uint(128);
-        slice expected_address = get_address_by_state_init(calculate_nft_item_state_init(item_index, storage::jetton_vesting_code, my_address(), 128));
+        (_, slice jetton_vesting_code, _) = storage::jetton_vesting_codes.udict_get_preveq?(128, item_index);
+        slice expected_address = get_address_by_state_init(calculate_nft_item_state_init(item_index, jetton_vesting_code, my_address(), 128));
         throw_unless(exc::incorrect_sender, equal_slices(expected_address, sender_address));
         
         slice jetton_wallet_address = in_msg_body~load_msg_addr();
@@ -123,9 +127,20 @@ global cell  storage::collection_content;
     ;; Admin commands
     throw_unless(exc::incorrect_sender, equal_slices(sender_address, storage::admin_address));
     
-    if (op == op::withdraw_ton) {
-        raw_reserve(min_tons_for_storage, 0);
-        send_message_with_comment(storage::admin_address, 0, "TON fees withrawal", mode::carry_remaining_balance);
+    if (op == op::update_vesting_code) {
+        slice jetton_vesting_code = in_msg_body~load_ref().begin_parse();
+        storage::jetton_vesting_codes~udict_set(128, storage::next_item_index, jetton_vesting_code);
+        
+        save_data();
+        return ();
+    }
+
+    if (op == op::set_code) {
+        set_code(in_msg_body~load_ref());
+        if (in_msg_body.slice_refs()) {
+            set_data(in_msg_body~load_ref());
+        }
+
         return ();
     }
 
@@ -138,6 +153,12 @@ global cell  storage::collection_content;
         send_cell_message(storage::admin_address, 0, msg_body.end_cell(), mode::carry_remaining_gas);
 
         save_data();
+        return ();
+    }
+    
+    if (op == op::withdraw_ton) {
+        raw_reserve(min_tons_for_storage, 0);
+        send_message_with_comment(storage::admin_address, 0, "TON fees withrawal", mode::carry_remaining_balance);
         return ();
     }
 
@@ -167,7 +188,8 @@ cell get_nft_content(int index, cell individual_content) method_id {
 
 slice get_nft_address_by_index(int index) method_id {
     load_data();
-    cell state_init = calculate_nft_item_state_init(index, storage::jetton_vesting_code, my_address(), 128);
+    (_, slice jetton_vesting_code, _) = storage::jetton_vesting_codes.udict_get_preveq?(128, index);
+    cell state_init = calculate_nft_item_state_init(index, jetton_vesting_code, my_address(), 128);
     return get_address_by_state_init(state_init);
 }
 
@@ -178,6 +200,6 @@ slice get_nft_address_by_index(int index) method_id {
         storage::admin_address,
         storage::next_item_index,
         storage::creation_fee,
-        storage::jetton_vesting_code
+        storage::jetton_vesting_codes
     );
 }

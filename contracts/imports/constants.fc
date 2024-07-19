@@ -18,6 +18,8 @@ const int op::burn_jetton             = 0x595f07bc;
 const int op::create_lock             = 0x62e0667;
 const int op::change_creation_fee     = 0x610240f1;
 const int op::change_content          = 0xec29200;
+const int op::update_vesting_code     = 0xdf4f17cb;
+const int op::set_code                = 0xe2d2d211;
 
 ;; SBT
 const int op::initialize              = 0xd80dee82;

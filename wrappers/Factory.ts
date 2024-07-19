@@ -1,4 +1,4 @@
-import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Sender, SendMode } from '@ton/core';
+import { Address, beginCell, Cell, Contract, contractAddress, ContractProvider, Dictionary, DictionaryValue, Sender, SendMode, Slice } from '@ton/core';
 import { Maybe } from '@ton/core/dist/utils/maybe';
 import { toNano } from '@ton/core';
 import { OpCodes } from './helpers/constants';
@@ -8,7 +8,7 @@ export type FactoryConfig = {
     admin_address: Address;
     start_index: bigint;
     creation_fee: bigint;
-    jetton_vesting_code: Cell;
+    jetton_vesting_codes: Dictionary<bigint, Slice>;
     content: Maybe<Cell>;
 };
 
@@ -22,12 +22,23 @@ export type DeployVestingMessage = {
     content: Maybe<Cell>
 }
 
+export function sliceDictValueParser(): DictionaryValue<Slice> {
+    return {
+        serialize: (src, buidler) => {
+            buidler.storeSlice(src).endCell();
+        },
+        parse: (src) => {
+            return src;
+        }
+    }
+}
+
 export function factoryConfigToCell(config: FactoryConfig): Cell {
     return beginCell()
         .storeAddress(config.admin_address)
         .storeUint(config.start_index, 128)
         .storeCoins(config.creation_fee)
-        .storeRef(config.jetton_vesting_code)
+        .storeDict(config.jetton_vesting_codes, Dictionary.Keys.BigUint(128), sliceDictValueParser())
         .storeMaybeRef(config.content)
     .endCell();
 }
