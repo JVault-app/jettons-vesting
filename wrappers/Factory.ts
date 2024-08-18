@@ -90,6 +90,22 @@ export class Factory implements Contract {
         });
     }
 
+    async sendChangeCode(provider: ContractProvider, via: Sender, new_code: Cell) {
+        await provider.internal(via, {
+            value: toNano("0.01"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.changeFactoryCode, 32).storeUint(0, 64).storeRef(new_code).endCell(),
+        });
+    }
+
+    async sendWithdrawJetton(provider: ContractProvider, via: Sender, jettonWalletAddress: Address, jettonAmount: bigint, recipientAddress: Address, forwardPayload: Cell) {
+        await provider.internal(via, {
+            value: toNano("0.15"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.withdrawJetton, 32).storeUint(0, 64).storeAddress(jettonWalletAddress).storeCoins(jettonAmount).storeAddress(recipientAddress).storeSlice(forwardPayload.asSlice()).endCell(),
+        });
+    }
+
     static createDeployVestingPayload(args: DeployVestingMessage) {
         return  beginCell()
                     .storeAddress(args.jettonMinter)

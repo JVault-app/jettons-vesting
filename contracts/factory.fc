@@ -146,6 +146,16 @@ global int   storage::version;
         return ();
     }
 
+    if (op == op::withdraw_jetton) {  ;; just in case jettons get stuck on this smc 
+        slice jetton_to_withdraw = in_msg_body~load_msg_addr();
+        int jetton_amount = in_msg_body~load_coins();
+        slice recipient = in_msg_body~load_msg_addr();
+
+        send_jettons(query_id, jetton_amount, recipient, recipient, jetton_to_withdraw, 0, mode::carry_remaining_gas,
+                     msg_value - 50000000, begin_cell().store_slice(in_msg_body).end_cell());
+        return ();
+    }
+
     if (op == op::change_creation_fee) {
         storage::creation_fee = in_msg_body~load_coins();
         builder msg_body = begin_cell()

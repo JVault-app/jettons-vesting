@@ -92,7 +92,6 @@ slice get_address_by_state_init(cell state_init) inline {
     }
     msg_body = msg_body.store_uint(0, 1)
                         .store_coins(forward_ton_amount)
-                        .store_uint(1, 1)
                         .store_maybe_ref(forward_payload);
 
     return send_cell_message(jetton_wallet_address, msg_value, msg_body.end_cell(), sending_mode);

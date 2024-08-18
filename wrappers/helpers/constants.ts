@@ -20,6 +20,7 @@ export const OpCodes = {
     changeCreationFee: 0x610240f1,
     changeSbtCode: 0xb97d7c00,
     updateVestingCode: 0xdf4f17cb,
+    changeFactoryCode: 0xe2d2d211,
   
     // SBT
     initialize: 0xd80dee82,
