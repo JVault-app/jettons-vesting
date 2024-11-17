@@ -5,11 +5,11 @@ import { buildOnchainMetadata } from '../wrappers/buildOnchain';
 
 export async function run(provider: NetworkProvider) {
     let vestingCodesDict = Dictionary.empty(Dictionary.Keys.BigInt(128), sliceDictValueParser());
-    vestingCodesDict.set(0n, beginCell().storeMaybeRef(beginCell().storeRef(await compile('JettonVesting')).endCell()).endCell().beginParse());
+    vestingCodesDict.set(1n, beginCell().storeMaybeRef(await compile('JettonVesting')).endCell().beginParse());
     
     const factory = provider.open(Factory.createFromConfig({
         admin_address: provider.sender().address!!,
-        start_index: 209n,
+        start_index: 0n,
         creation_fee: toNano('0.5'),
         jetton_vesting_codes: vestingCodesDict,
         content: buildOnchainMetadata({name: "JVault locks", description: "Collection with soulbound tokens confirming ownership of jettons locked in JVault Locker (actual version)", image: "https://jvault.xyz/static/images/lock_collection.png"}),
