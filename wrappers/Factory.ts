@@ -76,9 +76,17 @@ export class Factory implements Contract {
 
     async sendChangeCreationFee(provider: ContractProvider, via: Sender, new_creation_fee: bigint) {
         await provider.internal(via, {
-            value: toNano("0.01"),
+            value: toNano("0.02"),
             sendMode: SendMode.PAY_GAS_SEPARATELY,
             body: beginCell().storeUint(OpCodes.changeCreationFee, 32).storeUint(0, 64).storeCoins(new_creation_fee).endCell(),
+        });
+    }
+
+    async sendChangeContent(provider: ContractProvider, via: Sender, newContent: Cell) {
+        await provider.internal(via, {
+            value: toNano("0.01"),
+            sendMode: SendMode.PAY_GAS_SEPARATELY,
+            body: beginCell().storeUint(OpCodes.changeContent, 32).storeUint(0, 64).storeMaybeRef(newContent).endCell(),
         });
     }
 

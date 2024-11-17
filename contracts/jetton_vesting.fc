@@ -56,7 +56,7 @@ global int   storage::cycles_number;         ;; number of unlocks excluding init
 }
 
 
-() save_data() impure {
+() save_data() impure inline_ref {
     set_data(
             begin_cell()
                 .store_uint(storage::index, 128)

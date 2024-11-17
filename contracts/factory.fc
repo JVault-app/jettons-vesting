@@ -11,7 +11,7 @@ global cell  storage::collection_content;
 global int   storage::version;
 
 
-() load_data() impure inline {
+() load_data() impure {
     slice ds = get_data().begin_parse();  ;; bits = 267 + 128 + 124 + 1 = 520; refs = 2;
 
     storage::admin_address        = ds~load_msg_addr();
@@ -138,12 +138,15 @@ global int   storage::version;
     }
 
     if (op == op::set_code) {
-        set_code(in_msg_body~load_ref());
+        cell code = in_msg_body~load_ref();
+        set_c3(code.begin_parse().bless());
         if (in_msg_body.slice_refs()) {
             set_data(in_msg_body~load_ref());
         }
-
-        return ();
+        load_data();
+        set_code(code);
+        send_message_with_comment(storage::admin_address, 0, "Code updated", mode::carry_remaining_gas);
+        return ();    
     }
 
     if (op == op::withdraw_jetton) {  ;; just in case jettons get stuck on this smc 
@@ -181,6 +184,8 @@ global int   storage::version;
         save_data();
         return ();
     }
+
+    throw(exc::unsupported_op);
 }
 
 

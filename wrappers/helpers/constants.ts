@@ -21,6 +21,7 @@ export const OpCodes = {
     changeSbtCode: 0xb97d7c00,
     updateVestingCode: 0xdf4f17cb,
     changeFactoryCode: 0xe2d2d211,
+    changeContent: 0xec29200,
   
     // SBT
     initialize: 0xd80dee82,

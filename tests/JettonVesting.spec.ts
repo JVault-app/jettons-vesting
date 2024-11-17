@@ -1,4 +1,4 @@
-import { Blockchain, SandboxContract, TreasuryContract, prettyLogTransactions, printTransactionFees } from '@ton/sandbox';
+import { Blockchain, SandboxContract, SendMessageResult, TreasuryContract, prettyLogTransactions, printTransactionFees } from '@ton/sandbox';
 import { Cell, Dictionary, DictionaryValue, Slice, beginCell, toNano } from '@ton/core';
 import { JettonVesting, JettonVestingConfigInited } from '../wrappers/JettonVesting';
 import '@ton/test-utils';
@@ -37,6 +37,7 @@ describe('JettonVesting', () => {
     let vestingJettonWallet: SandboxContract<JettonWallet>;
     let factoryJettonWallet: SandboxContract<JettonWallet>;
 
+    let transactionRes: SendMessageResult;
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         blockchain.now = 1000000000
@@ -47,8 +48,16 @@ describe('JettonVesting', () => {
         let vestingCodesDict = Dictionary.empty(Dictionary.Keys.BigInt(128), sliceDictValueParser());
         vestingCodesDict.set(0n, beginCell().storeMaybeRef(beginCell().storeUint(1231, 123).endCell()).endCell().beginParse());
         
-        factory = blockchain.openContract(Factory.createFromConfig({admin_address: admin.address, start_index: 0n, jetton_vesting_codes: vestingCodesDict, creation_fee: toNano("0.1"), content: null, version: 0}, factoryCode));
+        factory = blockchain.openContract(Factory.createFromConfig({
+            admin_address: admin.address,
+            start_index: 0n, 
+            jetton_vesting_codes: vestingCodesDict, 
+            creation_fee: toNano("0.5"), 
+            content: null, 
+            version: 0
+        }, factoryCode));
         await factory.sendDeploy(admin.getSender(), toNano("0.03")); 
+        await factory.sendChangeCode(admin.getSender(), await compile("Factory"));
         await factory.sendUpdateVestingCode(admin.getSender(), vestingCode);
 
         vesting = blockchain.openContract(JettonVesting.createFromAddress(await factory.getNftAddressByIndex(0n)))

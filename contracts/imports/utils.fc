@@ -77,20 +77,15 @@ slice get_address_by_state_init(cell state_init) inline {
 
 
 () send_jettons(int query_id, int jetton_amount, slice to_address, slice response_address, slice jetton_wallet_address, 
-                int msg_value, int sending_mode, int forward_ton_amount, cell forward_payload) impure inline {
+                int msg_value, int sending_mode, int forward_ton_amount, cell forward_payload) impure inline_ref {
 
     builder msg_body = begin_cell()
                         .store_uint(op::transfer_jetton, 32)
                         .store_uint(query_id, 64)
                         .store_coins(jetton_amount)
-                        .store_slice(to_address);
-    ifnot (null?(response_address)) {
-        msg_body = msg_body.store_slice(response_address);
-    }
-    else {
-        msg_body = msg_body.store_uint(0, 2);
-    }
-    msg_body = msg_body.store_uint(0, 1)
+                        .store_slice(to_address)
+                        .store_slice(response_address)
+                        .store_uint(0, 1)
                         .store_coins(forward_ton_amount)
                         .store_maybe_ref(forward_payload);
 
@@ -128,27 +123,42 @@ builder store_number10(builder b, int x) asm """
 """;
 
 
-builder store_str_float(builder b, int number, int ten_pow_decimals) {
+builder store_str_float(builder b, int number, int ten_pow_decimals) inline {
     (int int_part, int dec_part) = divmod(number, ten_pow_decimals);
-    if (int_part + dec_part == 0) {
-        return b.store_number10(0);
-    }
-
-    ;; displayed decimals = max(min(jetton_decimals, 5 - log10(int_part)), 0)
     b = b.store_number10(int_part);
-    int max_dec_part = (int_part) ? (100000 / int_part) : (muldiv(ten_pow_decimals, ten_pow_decimals, (100000 * (dec_part + 1))));
+    if (dec_part == 0) {
+        return b;
+    }
+    ~dump(dec_part);
+    ;; displayed decimals = max(min(jetton_decimals, 4 - log10(int_part)), 0)
+    int max_dec_part = (int_part) ? (10000 / int_part) : 10000;
+    int zeros = 0;
+    int tmp = ten_pow_decimals / (dec_part + 1);
+    while (tmp >= 10) {
+        tmp /= 10;
+        max_dec_part /= 10;
+        zeros += 1;
+    }
+    ~dump(zeros);
+    if (max_dec_part == 0) {
+        return b;
+    }
     while (dec_part > max_dec_part) {
         dec_part /= 10;
     }
     if (dec_part) {
-        b = b.store_uint(46, 8)  ;; store "." (dot)
-                .store_number10(dec_part);
+        while (dec_part % 10 == 0) {
+            dec_part /= 10;
+        } 
+        b = b.store_uint(46, 8);  ;; store "." (dot)
+        repeat(zeros) { b = b.store_uint(48, 8); };
+        return b.store_number10(dec_part);
     }
-
     return b;
 }
 
-builder store_str_jettons(builder b, int jetton_amount, int one_jetton, slice symbol) {
+
+builder store_str_jettons(builder b, int jetton_amount, int one_jetton, slice symbol) inline_ref {
     return b.store_str_float(jetton_amount, one_jetton)
                 .store_uint(32, 8)  ;; store " " (space)
                 .store_slice(symbol);
